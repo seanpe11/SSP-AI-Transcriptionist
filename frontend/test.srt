@@ -1,0 +1,695 @@
+1
+00:00:00,000 --> 00:00:01,000
+Cloud edge is a hype.
+
+2
+00:00:01,000 --> 00:00:03,000
+We do true edge.
+
+3
+00:00:03,000 --> 00:00:05,000
+We inject the software in the customer's windows distribution
+
+4
+00:00:05,000 --> 00:00:07,000
+Yo, what's up with the camera?
+
+5
+00:00:07,000 --> 00:00:10,000
+Dude, did you put Zoom on the microwave?
+
+6
+00:00:10,000 --> 00:00:12,000
+This was the microwave?
+
+7
+00:00:12,000 --> 00:00:13,000
+I finally found the CEO's email.
+
+8
+00:00:13,000 --> 00:00:16,000
+We can send the demo tomorrow.
+
+9
+00:00:16,000 --> 00:00:18,000
+I mean, I also have a social security number if you need it.
+
+10
+00:00:18,000 --> 00:00:20,000
+Yo, our network's down.
+
+11
+00:00:20,000 --> 00:00:22,000
+Perfect.
+
+12
+00:00:22,000 --> 00:00:23,000
+I was stress testing it.
+
+13
+00:00:23,000 --> 00:00:25,000
+Oh, did you see the new marketplace I rolled out?
+
+14
+00:00:25,000 --> 00:00:25,000
+What?
+
+15
+00:00:25,000 --> 00:00:28,000
+The demo we sent out to investors doesn't work.
+
+16
+00:00:28,000 --> 00:00:31,000
+I know, they're using Arc browser.
+
+17
+00:00:31,000 --> 00:00:32,000
+We don't need those investors.
+
+18
+00:00:32,000 --> 00:00:33,000
+I just came back from the meetup
+
+19
+00:00:33,000 --> 00:00:35,000
+on how to reduce our infra bill.
+
+20
+00:00:35,000 --> 00:00:37,000
+Yeah, infra bill is $0 somewhere.
+
+21
+00:00:37,000 --> 00:00:41,000
+Did you move our entire AWS stack to our Mac mini again?
+
+22
+00:00:41,000 --> 00:00:42,000
+You know how I'll be.
+
+23
+00:00:42,000 --> 00:00:45,000
+We had a working CUDA driver for Linux the whole time?
+
+24
+00:00:45,000 --> 00:00:47,000
+Hey man, have you heard GraphDBs?
+
+25
+00:00:47,000 --> 00:00:48,000
+What if you use graph?
+
+26
+00:00:48,000 --> 00:00:49,000
+Yeah.
+
+27
+00:00:49,000 --> 00:00:50,000
+Okay.
+
+28
+00:00:50,000 --> 00:00:52,000
+Yo, did you see this new AR library on Twitter?
+
+29
+00:00:52,000 --> 00:00:54,000
+Doesn't fit our use case.
+
+30
+00:00:54,000 --> 00:00:55,000
+It was out since today.
+
+31
+00:00:55,000 --> 00:00:57,000
+When have you tried it?
+
+32
+00:00:57,000 --> 00:00:58,000
+It's my library.
+
+33
+00:00:58,000 --> 00:01:01,000
+Is this Emacs and Temple OS?
+
+34
+00:01:01,000 --> 00:01:02,000
+Oh, this is Spacemacs.
+
+35
+00:01:02,000 --> 00:01:03,000
+Oh, what's this?
+
+36
+00:01:03,000 --> 00:01:05,000
+Don't touch this.
+
+37
+00:01:05,000 --> 00:01:06,000
+It's part of our infra.
+
+38
+00:01:06,000 --> 00:01:10,000
+You lost all our money on this CUDA cat?
+
+39
+00:01:10,000 --> 00:01:11,000
+Oh, it's back up.
+
+40
+00:01:11,000 --> 00:01:12,000
+We're rich.
+
+41
+00:01:12,000 --> 00:01:14,000
+Oh, I did rewrite the whole thing to Rust.
+
+42
+00:01:14,000 --> 00:01:15,000
+Oh.
+
+43
+00:01:15,000 --> 00:01:17,000
+I like the performance wasn't better,
+
+44
+00:01:17,000 --> 00:01:18,000
+so I wrote it back.
+
+45
+00:01:18,000 --> 00:01:19,000
+Or why don't we use it?
+
+46
+00:01:19,000 --> 00:01:22,000
+I already destroyed all the code and burned the computer.
+
+47
+00:01:22,000 --> 00:01:23,000
+What?
+
+48
+00:01:23,000 --> 00:01:24,000
+Yo, I wonder if I could write this in DeadFish.
+
+49
+00:01:24,000 --> 00:01:25,000
+No.
+
+50
+00:01:25,000 --> 00:01:27,000
+Fixed the coffee machine?
+
+51
+00:01:27,000 --> 00:01:28,000
+Patch the kernel?
+
+52
+00:01:28,000 --> 00:01:30,000
+Yo, not everything needs a kernel patch.
+
+53
+00:01:30,000 --> 00:01:32,000
+I just turn it on and off.
+
+54
+00:01:32,000 --> 00:01:34,000
+What is this?
+
+55
+00:01:34,000 --> 00:01:35,000
+Custom Linux.
+
+56
+00:01:35,000 --> 00:01:36,000
+Yo, our network's down.
+
+57
+00:01:36,000 --> 00:01:37,000
+No, no, no, it's a different one.
+
+58
+00:01:37,000 --> 00:01:39,000
+I ran the script I found online
+
+59
+00:01:39,000 --> 00:01:43,000
+and now the prod DB is missing.
+
+60
+00:01:43,000 --> 00:01:44,000
+Oh, don't worry.
+
+61
+00:01:44,000 --> 00:01:44,000
+We have a backup.
+
+62
+00:01:44,000 --> 00:01:45,000
+The whole backup.
+
+63
+00:01:45,000 --> 00:01:46,000
+Everything is gone.
+
+64
+00:01:46,000 --> 00:01:48,000
+Wait, I have a backup you didn't know about.
+
+65
+00:01:48,000 --> 00:01:49,000
+Can't trust humans.
+
+66
+00:01:49,000 --> 00:01:51,000
+This is our backup.
+
+67
+00:01:51,000 --> 00:01:54,000
+What about making it readable?
+
+68
+00:01:54,000 --> 00:01:55,000
+Who else needs to read this?
+
+69
+00:01:55,000 --> 00:01:56,000
+Oh, on the production website,
+
+70
+00:01:56,000 --> 00:01:58,000
+I added like a Homer button.
+
+71
+00:01:58,000 --> 00:02:00,000
+If you press it, you can see the customer statistics
+
+72
+00:02:00,000 --> 00:02:01,000
+all in one go.
+
+73
+00:02:01,000 --> 00:02:02,000
+It renders in 12.4 milliseconds.
+
+74
+00:02:02,000 --> 00:02:05,000
+People can see our customer statistics publicly?
+
+75
+00:02:05,000 --> 00:02:06,000
+Yeah, but it's super performant.
+
+76
+00:02:06,000 --> 00:02:09,000
+People can see our customer statistics publicly?
+
+77
+00:02:09,000 --> 00:02:12,000
+Man, it still isn't working on 360 videos.
+
+78
+00:02:12,000 --> 00:02:14,000
+We don't support 360 video.
+
+79
+00:02:14,000 --> 00:02:15,000
+We do in a few minutes.
+
+80
+00:02:15,000 --> 00:02:16,000
+How long do you think this is gonna take?
+
+81
+00:02:16,000 --> 00:02:19,000
+Three to five hours.
+
+82
+00:02:19,000 --> 00:02:21,000
+If you leave the room, maybe two.
+
+83
+00:02:21,000 --> 00:02:23,000
+Oh, is that your diploma?
+
+84
+00:02:23,000 --> 00:02:24,000
+What?
+
+85
+00:02:24,000 --> 00:02:26,000
+Oh, yeah, man, I need that for my visa.
+
+86
+00:02:26,000 --> 00:02:28,000
+Yo, I wrote the library from scratch.
+
+87
+00:02:28,000 --> 00:02:29,000
+What?
+
+88
+00:02:29,000 --> 00:02:30,000
+Yo, I wrote our own crypto.
+
+89
+00:02:30,000 --> 00:02:30,000
+What?
+
+90
+00:02:30,000 --> 00:02:31,000
+Just to be safe.
+
+91
+00:02:31,000 --> 00:02:32,000
+We missed the deadline.
+
+92
+00:02:32,000 --> 00:02:34,000
+I sent it out 20 minutes ago already.
+
+93
+00:02:34,000 --> 00:02:36,000
+Did you want me to send the iOS or the Android version?
+
+94
+00:02:36,000 --> 00:02:37,000
+What?
+
+95
+00:02:37,000 --> 00:02:38,000
+The iOS version.
+
+96
+00:02:38,000 --> 00:02:39,000
+Oh, cool, I sent both.
+
+97
+00:02:39,000 --> 00:02:40,000
+What is this?
+
+98
+00:02:40,000 --> 00:02:42,000
+Oh, it's just I'm debugging in ASCII.
+
+99
+00:02:42,000 --> 00:02:43,000
+I'm not gonna waste resources.
+
+100
+00:02:43,000 --> 00:02:44,000
+We're two JavaScript frameworks away
+
+101
+00:02:44,000 --> 00:02:46,000
+from actually launching this.
+
+102
+00:02:46,000 --> 00:02:47,000
+What?
+
+103
+00:02:47,000 --> 00:02:48,000
+I'm joking, I'm joking.
+
+104
+00:02:48,000 --> 00:02:49,000
+It's all lost and hopeless.
+
+105
+00:02:49,000 --> 00:02:50,000
+What?
+
+106
+00:02:50,000 --> 00:02:51,000
+We need the feature today for the demo.
+
+107
+00:02:51,000 --> 00:02:53,000
+Hold on, my OS just broke.
+
+108
+00:02:53,000 --> 00:02:54,000
+Let me just fix it first.
+
+109
+00:02:54,000 --> 00:02:55,000
+Oh, actually, you know what?
+
+110
+00:02:55,000 --> 00:02:56,000
+I think it's just a Vulkan bug.
+
+111
+00:02:56,000 --> 00:02:57,000
+We don't need the UI.
+
+112
+00:02:57,000 --> 00:02:58,000
+We need the UI.
+
+113
+00:02:58,000 --> 00:02:59,000
+What?
+
+114
+00:02:59,000 --> 00:03:00,000
+Okay, okay, let's-
+
+115
+00:03:00,000 --> 00:03:01,000
+Isn't our demo on the PC?
+
+116
+00:03:01,000 --> 00:03:02,000
+Yeah, rip.
+
+117
+00:03:02,000 --> 00:03:04,000
+I'm horrible at coding.
+
+118
+00:03:04,000 --> 00:03:07,000
+Yo, what do you think about this UI design?
+
+119
+00:03:07,000 --> 00:03:09,000
+Oh, that's perfect.
+
+120
+00:03:09,000 --> 00:03:13,000
+How long to put in the app?
+
+121
+00:03:13,000 --> 00:03:15,000
+This is the app.
+
+122
+00:03:15,000 --> 00:03:16,000
+You're good at front end, too.
+
+123
+00:03:16,000 --> 00:03:17,000
+We need to raise money.
+
+124
+00:03:17,000 --> 00:03:19,000
+I put all our money in Bitcoin, we're good.
+
+125
+00:03:19,000 --> 00:03:22,000
+Cool, what else?
+
+126
+00:03:22,000 --> 00:03:25,000
+Dude, Metaverse is dead.
+
+127
+00:03:25,000 --> 00:03:26,000
+I already see with the guy who built it.
+
+128
+00:03:26,000 --> 00:03:28,000
+I'm trying to hire more engineers.
+
+129
+00:03:28,000 --> 00:03:30,000
+Just let me know which ones you want.
+
+130
+00:03:30,000 --> 00:03:32,000
+No, hire less engineers.
+
+131
+00:03:32,000 --> 00:03:33,000
+Less engineers.
+
+132
+00:03:33,000 --> 00:03:34,000
+Hire marketing people.
+
+133
+00:03:34,000 --> 00:03:35,000
+We need marketing people.
+
+134
+00:03:35,000 --> 00:03:37,000
+We already have 12.
+
+135
+00:03:37,000 --> 00:03:38,000
+Hire accounting.
+
+136
+00:03:38,000 --> 00:03:40,000
+We need accounting people.
+
+137
+00:03:40,000 --> 00:03:41,000
+What about product management?
+
+138
+00:03:41,000 --> 00:03:42,000
+Nah, all right.
+
+139
+00:03:42,000 --> 00:03:44,000
+Okay, it's PlayStation VM.
+
+140
+00:03:44,000 --> 00:03:45,000
+Written in Haskell.
+
+141
+00:03:45,000 --> 00:03:47,000
+No, SSL is a joke.
+
+142
+00:03:47,000 --> 00:03:48,000
+I know the guy who built the backdoor.
+
+143
+00:03:48,000 --> 00:03:49,000
+What backdoor?
+
+144
+00:03:49,000 --> 00:03:50,000
+What?
+
+145
+00:03:50,000 --> 00:03:51,000
+No, Solana is a joke.
+
+146
+00:03:51,000 --> 00:03:53,000
+I know the guy who's going to dump it.
+
+147
+00:03:53,000 --> 00:03:53,000
+What?
+
+148
+00:03:53,000 --> 00:03:56,000
+Oh yeah, forget that.
+
+149
+00:03:56,000 --> 00:03:57,000
+You're good at this, too.
+
+150
+00:03:57,000 --> 00:03:59,000
+Yeah, so when he kept saying crody,
+
+151
+00:03:59,000 --> 00:04:01,000
+that was actually like a Canadian reference.
+
+152
+00:04:01,000 --> 00:04:03,000
+Oh, actually what Kendrick Lamar meant
+
+153
+00:04:03,000 --> 00:04:04,000
+when he was talking.
+
+154
+00:04:04,000 --> 00:04:05,000
+Come on, man.
+
+155
+00:04:05,000 --> 00:04:07,000
+We need the demo in one hour.
+
+156
+00:04:07,000 --> 00:04:18,000
+It will be done by then, don't worry.
+
+157
+00:04:18,000 --> 00:04:19,000
+I got it, I got it.
+
+158
+00:04:19,000 --> 00:04:22,000
+I will be ready.
+
+159
+00:04:22,000 --> 00:04:23,000
+Oh, my OS just broke.
+
+160
+00:04:23,000 --> 00:04:29,000
+Just let me fix that first.
+
+161
+00:04:29,000 --> 00:04:30,000
+Come on, man.
+
+162
+00:04:30,000 --> 00:04:31,000
+Yeah, I'll be done by then.
+
+163
+00:04:31,000 --> 00:04:32,000
+Is this 2K25?
+
+164
+00:04:32,000 --> 00:04:33,000
+Yeah.
+
+165
+00:04:33,000 --> 00:04:34,000
+Limited edition?
+
+166
+00:04:34,000 --> 00:04:35,000
+Hijacked edition.
+
+167
+00:04:35,000 --> 00:04:36,000
+What does that say?
+
+168
+00:04:36,000 --> 00:04:38,000
+Oh, that's just compiler small talk.
+
+169
+00:04:38,000 --> 00:04:39,000
+It's red.
+
+170
+00:04:39,000 --> 00:04:41,000
+Compilers always be complaining.
+
+171
+00:04:41,000 --> 00:04:43,000
+Dude, new LLVM version and stuff.
+
+172
+00:04:43,000 --> 00:04:44,000
+Build is failing, though.
+
+173
+00:04:44,000 --> 00:04:48,000
+We have a demo coming up.
+
+174
+00:04:48,000 --> 00:04:50,000
+Ah, don't worry, I'll fix-
