@@ -1,3 +1,4 @@
 Transcriptions
 node_modules
 ./frontend/node_modules
+./backend/.env
