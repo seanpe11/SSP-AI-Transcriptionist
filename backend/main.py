@@ -7,19 +7,17 @@ from fastapi.middleware.cors import CORSMiddleware
 import tempfile
 import os
 import uuid
-
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# --- 1. Environment and Supabase Client Setup ---
 print(f"👀 Current Working Directory: {os.getcwd()}")
 load_dotenv()
 
 
 def get_supabase_client() -> Client:
     """
-    Initializes and returns the Supabase client.
-    Raises ValueError if environment variables are not set.
+    Initializes and returns the Supabase client, raising an error if config is missing.
     """
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_KEY")
@@ -34,13 +32,13 @@ def get_supabase_client() -> Client:
 # Initialize the client once when the module is imported
 supabase = get_supabase_client()
 
-# --- 1. App Initialization ---
+# --- 2. FastAPI App Initialization ---
 app = FastAPI(
     title="Whisper Timestamped API",
     description="An API to transcribe audio files asynchronously using Supabase for job tracking.",
 )
 
-# --- 2. CORS Middleware ---
+# CORS Middleware for frontend access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -57,6 +55,7 @@ app.add_middleware(
 TABLE_NAME = "mdt_transcription_jobs"
 
 print("Loading Whisper model...")
+# Using "tiny" model for speed, can be changed to "base", "small", etc.
 model = whisper.load_model("tiny", device="cpu")
 print("✅ Whisper model loaded successfully.")
 
@@ -65,33 +64,34 @@ print("✅ Whisper model loaded successfully.")
 def run_transcription(job_id: str, file_path: str):
     """
     Background task to run transcription and update Supabase with the result.
+    This function is identified by the internal job_id (UUID) for precise updates.
     """
     try:
-        # 1. Update status to 'processing'
+        # Update status to 'processing' to indicate work has started
         print(f"Job {job_id}: Starting transcription, setting status to 'processing'.")
         supabase.table(TABLE_NAME).update({"status": "processing"}).eq(
             "id", job_id
-        ).execute()
+        ).select().execute()
 
-        # 2. Perform the actual transcription
+        # Perform the actual transcription
         result = whisper.transcribe(model, file_path, language="en")
 
-        # 3. Store the result and mark the job as 'complete'
+        # Store the final result and mark the job as 'complete'
         supabase.table(TABLE_NAME).update({"status": "complete", "result": result}).eq(
             "id", job_id
-        ).execute()
+        ).select().execute()
         print(f"Job {job_id}: Transcription complete.")
 
     except Exception as e:
         print(f"Job {job_id}: An error occurred - {e}")
-        # Update the job with an error status and message
+        # Update the job with an error status and message for debugging
         supabase.table(TABLE_NAME).update({
             "status": "error",
             "result": {"error": str(e)},
-        }).eq("id", job_id).execute()
+        }).eq("id", job_id).select().execute()
 
     finally:
-        # Clean up the temporary file
+        # Clean up the temporary audio file to save space
         if os.path.exists(file_path):
             os.remove(file_path)
             print(f"Job {job_id}: Temporary file {file_path} deleted.")
@@ -103,13 +103,30 @@ async def transcribe_audio_async(
     background_tasks: BackgroundTasks, audio_file: UploadFile = File(...)
 ):
     """
-    Accepts an audio file, creates a job record in Supabase,
+    Accepts an audio file, checks for filename uniqueness, creates a job record,
     and starts the transcription in the background.
     """
-    job_id = str(uuid.uuid4())
+    filename = audio_file.filename
 
+    # Check if a job with this filename already exists to prevent duplicates
+    response = (
+        supabase.table(TABLE_NAME)
+        .select("id")
+        .eq("filename", filename)
+        .maybe_single()
+        .execute()
+    )
+    if response.data:
+        return JSONResponse(
+            status_code=409,  # 409 Conflict is more appropriate
+            content={"error": f"A job with the filename '{filename}' already exists."},
+        )
+
+    # Save the uploaded file to a temporary location for processing
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".tmp") as tmp:
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=os.path.splitext(filename)[1]
+        ) as tmp:
             tmp.write(await audio_file.read())
             tmp_path = tmp.name
     except Exception as e:
@@ -117,14 +134,17 @@ async def transcribe_audio_async(
             status_code=500, content={"error": f"Failed to save file: {e}"}
         )
 
+    # Generate a unique internal ID for this job
+    job_id = str(uuid.uuid4())
+
     # Create a job record in Supabase with 'queued' status
     supabase.table(TABLE_NAME).insert({
         "id": job_id,
         "status": "queued",
-        "filename": audio_file.filename,
-    }).execute()
+        "filename": filename,  # Store the original filename
+    }).select().execute()
 
-    # Add the long-running task to the background
+    # Add the long-running transcription task to the background
     background_tasks.add_task(run_transcription, job_id, tmp_path)
 
     # Immediately return a response to the client
@@ -132,19 +152,24 @@ async def transcribe_audio_async(
         status_code=202,  # HTTP 202 Accepted
         content={
             "job_id": job_id,
-            "message": "Transcription queued. Check status endpoint for results.",
+            "filename": filename,
+            "message": "Transcription has been queued. Check status using the filename.",
         },
     )
 
 
 # --- 6. Status Endpoint ---
-@app.get("/status/{job_id}")
-async def get_transcription_status(job_id: str):
+@app.get("/status/{filename}")
+async def get_transcription_status(filename: str):
     """
-    Queries Supabase to check the status of a transcription job.
+    Queries Supabase using the filename to check the status of a transcription job.
     """
     response = (
-        supabase.table(TABLE_NAME).select("*").eq("id", job_id).maybe_single().execute()
+        supabase.table(TABLE_NAME)
+        .select("*")
+        .eq("filename", filename)
+        .maybe_single()
+        .execute()
     )
 
     job = response.data
@@ -156,4 +181,5 @@ async def get_transcription_status(job_id: str):
 
 # --- 7. Run the API Server ---
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # Use "api:app" to match the filename
+    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)
