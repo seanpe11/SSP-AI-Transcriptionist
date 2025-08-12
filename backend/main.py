@@ -1,6 +1,4 @@
 # api.py
-# Description: An asynchronous FastAPI server to transcribe audio files using whisper-timestamped.
-
 import whisper_timestamped as whisper
 import uvicorn
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks
@@ -9,65 +7,88 @@ from fastapi.middleware.cors import CORSMiddleware
 import tempfile
 import os
 import uuid
-from typing import Dict
 
-# --- 1. Initialize FastAPI App ---
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+print(f"👀 Current Working Directory: {os.getcwd()}")
+load_dotenv()
+
+
+def get_supabase_client() -> Client:
+    """
+    Initializes and returns the Supabase client.
+    Raises ValueError if environment variables are not set.
+    """
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+
+    if not supabase_url or not supabase_key:
+        raise ValueError("Supabase URL and Key must be set in the .env file.")
+
+    print("✅ Supabase client initialized successfully.")
+    return create_client(supabase_url, supabase_key)
+
+
+# Initialize the client once when the module is imported
+supabase = get_supabase_client()
+
+# --- 1. App Initialization ---
 app = FastAPI(
     title="Whisper Timestamped API",
-    description="An API to transcribe audio files asynchronously and get word-level timestamps.",
+    description="An API to transcribe audio files asynchronously using Supabase for job tracking.",
 )
 
-# Make sure this list includes the EXACT origin of your React app
-# Check your browser's address bar for your React app.
-origins = [
-    "http://localhost:3000",  # For Create React App
-    "http://localhost:5173",  # For Vite (very common)
-    # Add any other port you might be using
-]
-
+# --- 2. CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://transcriptions.seanpe.io",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- 2. In-Memory Job Store ---
-# This dictionary will act as a simple, in-memory database to store the status
-# and results of our transcription jobs. For a production system, you would
-# replace this with a more robust solution like Redis or a database.
-jobs: dict[str, Dict] = {}
+# --- 3. Global Variables & Model Loading ---
+TABLE_NAME = "mdt_transcription_jobs"
 
-# --- 3. Load the Whisper Model ---
-# The model is loaded once when the application starts.
 print("Loading Whisper model...")
-model = whisper.load_model("tiny", device="cpu")  # Use "cuda" if you have a GPU
-print("Model loaded successfully.")
+model = whisper.load_model("tiny", device="cpu")
+print("✅ Whisper model loaded successfully.")
 
 
 # --- 4. Background Worker Function ---
 def run_transcription(job_id: str, file_path: str):
     """
-    This function runs in the background to perform the transcription.
-    It updates the job store with the status and final result.
+    Background task to run transcription and update Supabase with the result.
     """
     try:
-        print(f"Job {job_id}: Starting transcription.")
-        jobs[job_id]["status"] = "processing"
+        # 1. Update status to 'processing'
+        print(f"Job {job_id}: Starting transcription, setting status to 'processing'.")
+        supabase.table(TABLE_NAME).update({"status": "processing"}).eq(
+            "id", job_id
+        ).execute()
 
-        # Perform the actual transcription
+        # 2. Perform the actual transcription
         result = whisper.transcribe(model, file_path, language="en")
 
-        # Store the result and mark the job as complete
-        jobs[job_id]["result"] = result
-        jobs[job_id]["status"] = "complete"
+        # 3. Store the result and mark the job as 'complete'
+        supabase.table(TABLE_NAME).update({"status": "complete", "result": result}).eq(
+            "id", job_id
+        ).execute()
         print(f"Job {job_id}: Transcription complete.")
 
     except Exception as e:
         print(f"Job {job_id}: An error occurred - {e}")
-        jobs[job_id]["status"] = "error"
-        jobs[job_id]["result"] = {"error": str(e)}
+        # Update the job with an error status and message
+        supabase.table(TABLE_NAME).update({
+            "status": "error",
+            "result": {"error": str(e)},
+        }).eq("id", job_id).execute()
 
     finally:
         # Clean up the temporary file
@@ -76,32 +97,34 @@ def run_transcription(job_id: str, file_path: str):
             print(f"Job {job_id}: Temporary file {file_path} deleted.")
 
 
-# --- 5. Define the Asynchronous Transcription Endpoint ---
+# --- 5. Transcription Endpoint ---
 @app.post("/transcribe/")
 async def transcribe_audio_async(
     background_tasks: BackgroundTasks, audio_file: UploadFile = File(...)
 ):
     """
-    Accepts an audio file, starts transcription in the background,
-    and immediately returns a job ID.
+    Accepts an audio file, creates a job record in Supabase,
+    and starts the transcription in the background.
     """
-    # Generate a unique ID for this transcription job
     job_id = str(uuid.uuid4())
 
-    # Save the uploaded file to a temporary location
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".tmp") as tmp:
             tmp.write(await audio_file.read())
             tmp_path = tmp.name
     except Exception as e:
         return JSONResponse(
-            status_code=500, content={"error": f"Failed to save uploaded file: {e}"}
+            status_code=500, content={"error": f"Failed to save file: {e}"}
         )
 
-    # Initialize the job status in our job store
-    jobs[job_id] = {"status": "queued", "result": None}
+    # Create a job record in Supabase with 'queued' status
+    supabase.table(TABLE_NAME).insert({
+        "id": job_id,
+        "status": "queued",
+        "filename": audio_file.filename,
+    }).execute()
 
-    # Add the long-running transcription task to the background
+    # Add the long-running task to the background
     background_tasks.add_task(run_transcription, job_id, tmp_path)
 
     # Immediately return a response to the client
@@ -109,45 +132,28 @@ async def transcribe_audio_async(
         status_code=202,  # HTTP 202 Accepted
         content={
             "job_id": job_id,
-            "status": "queued",
-            "message": "Transcription has been queued. Check the status endpoint for results.",
+            "message": "Transcription queued. Check status endpoint for results.",
         },
     )
 
 
-# --- 6. Define the Status Endpoint ---
+# --- 6. Status Endpoint ---
 @app.get("/status/{job_id}")
 async def get_transcription_status(job_id: str):
     """
-    Checks the status of a transcription job and returns the result if complete.
+    Queries Supabase to check the status of a transcription job.
     """
-    job = jobs.get(job_id)
-
-    if not job:
-        return JSONResponse(status_code=404, content={"error": "Job ID not found."})
-
-    if job["status"] == "complete":
-        # If the job is done, return the result and remove it from the store
-        result = job["result"]
-        del jobs[job_id]
-        return JSONResponse(
-            status_code=200, content={"status": "complete", "result": result}
-        )
-
-    elif job["status"] == "error":
-        # If an error occurred, return the error message
-        error_details = job["result"]
-        del jobs[job_id]
-        return JSONResponse(
-            status_code=500, content={"status": "error", "result": error_details}
-        )
-
-    # If the job is still queued or processing, just return the status
-    return JSONResponse(
-        status_code=200, content={"job_id": job_id, "status": job["status"]}
+    response = (
+        supabase.table(TABLE_NAME).select("*").eq("id", job_id).maybe_single().execute()
     )
+
+    job = response.data
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job not found."})
+
+    return JSONResponse(status_code=200, content=job)
 
 
 # --- 7. Run the API Server ---
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
