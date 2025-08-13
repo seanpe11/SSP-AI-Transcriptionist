@@ -9,5 +9,7 @@ node_modules/
 # Environment variables
 /backend/.env
 
+./Transcripts/
+
 # Other common files to ignore
 .DS_Store
