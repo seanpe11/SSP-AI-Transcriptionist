@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { FaFileAudio, FaPlay, FaPause, FaSave, FaPlus, FaTrash, FaPen, FaRegFileAlt, FaRegFileAudio, FaClipboard, FaFileDownload, FaInfoCircle } from 'react-icons/fa';
+const API_BASE_URL = 'http://localhost:8000';
 import { ChangeEvent } from 'react';
 
 type SubtitleEntry = {
@@ -20,7 +21,8 @@ interface JsonSegment {
   confidence?: number;
 }
 
-interface ApiRepsonse {
+interface ApiResponse {
+  filename: string;
   result: JsonTranscription | null;
   status: "processing" | "complete" | "error";
   error?: string;
@@ -57,6 +59,7 @@ const App: React.FC = () => {
   const [audioFileName, setAudioFileName] = useState<string | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [currentEditIndex, setCurrentEditIndex] = useState<number | null>(null);
   const [waveform, setWaveform] = useState<HTMLCanvasElement | null>(null);
@@ -144,6 +147,43 @@ const App: React.FC = () => {
     loadNewAudio(acceptedFiles[0]);
   }, [audioSrc]);
 
+  const pollForStatus = async (filename: string) => {
+    const intervalId = setInterval(async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/status/${filename}`);
+        if (!response.ok) {
+          if (response.status === 404) {
+            console.log("Job not found yet, still polling...");
+            return; // Continue polling
+          }
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data: ApiResponse = await response.json();
+
+        if (data.status === 'complete') {
+          clearInterval(intervalId);
+          // @ts-ignore
+          const parsed = parseJsonTranscription(data); // Use updated parser
+          setSubtitles(parsed);
+          setTranscriptionFileName(data.filename);
+          setIsTranscribing(false);
+          alert('Transcription complete!');
+        } else if (data.status === 'error') {
+          clearInterval(intervalId);
+          setIsTranscribing(false);
+          alert(`Transcription failed: ${data.result?.text || 'Unknown error'}`);
+        }
+        // If status is 'queued' or 'processing', do nothing and let the interval continue.
+      } catch (error) {
+        console.error("Polling error:", error);
+        clearInterval(intervalId);
+        setIsTranscribing(false);
+        alert('An error occurred while checking the transcription status.');
+      }
+    }, 3000); // Poll every 3 seconds
+  };
+
   const triggerAudioInputChange = () => {
     audioInputRef.current?.click();
   };
@@ -160,7 +200,6 @@ const App: React.FC = () => {
     if (audioSrc) {
       URL.revokeObjectURL(audioSrc);
     }
-
 
     const url = URL.createObjectURL(file);
 
@@ -284,6 +323,7 @@ const App: React.FC = () => {
 
   const uploadTranscriptionAudio = async () => {
     const formData = new FormData();
+    console.log("Uploading audio file...");
     if (!audioFile) return;
     formData.append('audio_file', audioFile);
 
@@ -360,6 +400,13 @@ const App: React.FC = () => {
     const newTime = clickTimeRatio * duration;
     jumpToTime(newTime);
   };
+
+  const Spinner: React.FC = () => (
+    <div className="flex flex-col items-center justify-center gap-4">
+      <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      <p className="text-gray-600 font-medium">Transcription in progress, please wait...</p>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gray-100 p-4">
@@ -555,30 +602,19 @@ const App: React.FC = () => {
               <div className="text-center p-12 bg-gray-50 rounded-lg border-t border-gray-200">
                 <div
                   {...getSubtitleRootProps()}
-                  className="border-2 border-gray-300 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-colors duration-150 cursor-pointer hover:bg-gray-50"
+                  className="border-2 border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center transition-colors duration-150 cursor-pointer hover:bg-gray-50"
                 >
-                  <input {...getSubtitleInputProps()} />
-                  <FaRegFileAlt className="text-4xl text-green-500 mb-3" />
-                  <p className="text-center text-gray-600">
-                    Drag & drop or click to select a transcription JSON file
-                  </p>
-                </div>
-                <div className="text-center pt-6 bg-gray-50">
-                  <p className="text-sm text-gray-500">Begin Transcription
-                    <button onClick={uploadTranscriptionAudio}
-                      className="ml-2 inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
-                      disabled={!audioSrc}
-                    >
-                      <FaPlus className="h-4 w-4" />
-                    </button>
-                  </p>
+                  <input {...getSubtitleInputProps()} disabled={!audioSrc} />
+                  {!audioSrc && <p className="text-center text-gray-600">Upload an audio file to begin transcription</p>}
+                  {(audioSrc && !isTranscribing) && <button onClick={uploadTranscriptionAudio} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors">Start Transcription</button>}
+                  {isTranscribing && <Spinner />}
                 </div>
               </div>
             )}
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 };
 
