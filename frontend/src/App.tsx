@@ -21,12 +21,18 @@ interface JsonSegment {
   confidence?: number;
 }
 
-interface ApiResponse {
-  filename: string;
-  result: JsonTranscription | null;
-  status: "processing" | "complete" | "error";
+interface TranscribeApiResponse {
+  filename?: string;
   error?: string;
   job_id?: string;
+  message?: string;
+}
+
+interface StatusApiResponse {
+  id: string;
+  status: "processing" | "complete" | "error";
+  result: JsonTranscription | null;
+  filename: string;
 }
 
 // This interface represents the overall structure of the JSON file.
@@ -67,13 +73,23 @@ const App: React.FC = () => {
   const audioInputRef = useRef<HTMLInputElement>(null);
   const transcriptionInputRef = useRef<HTMLInputElement>(null); // Renamed from srtInputRef
   const previousActiveSubtitleIdRef = useRef<number | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => {
+        setToastMessage(null);
+      }, 3000); // Hide toast after 3 seconds
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const waveformRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
 
   // Parse JSON transcription file content
-  const parseJsonTranscription = (content: string): SubtitleEntry[] => {
+  const parseJsonTranscriptionFromFile = (content: string): SubtitleEntry[] => {
     try {
       const result = JSON.parse(content);
       const data: JsonTranscription = result.result;
@@ -92,7 +108,22 @@ const App: React.FC = () => {
       }));
     } catch (error) {
       console.error("Failed to parse JSON file:", error);
-      alert("Invalid JSON file. Please check the file format and try again.");
+      setToastMessage("Invalid JSON file. Please check the file format and try again.");
+      return [];
+    }
+  };
+
+  const parseJsonTranscription = (result: JsonTranscription): SubtitleEntry[] => {
+    try {
+      return result.segments.map(seg => ({
+        id: seg.id,
+        startTime: seg.start,
+        endTime: seg.end,
+        text: seg.text.trim(),
+        confidence: seg.confidence,
+      }));
+    } catch (error) {
+      console.error("Failed to parse JSON response:", error);
       return [];
     }
   };
@@ -134,7 +165,7 @@ const App: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const content = e.target?.result as string;
-      const parsed = parseJsonTranscription(content);
+      const parsed = parseJsonTranscriptionFromFile(content);
       setTranscriptionFileName(file.name);
       setSubtitles(parsed);
     };
@@ -146,6 +177,38 @@ const App: React.FC = () => {
   const onAudioDrop = useCallback((acceptedFiles: File[]) => {
     loadNewAudio(acceptedFiles[0]);
   }, [audioSrc]);
+
+  const startTranscriptionProcess = async (file: File) => {
+    setIsTranscribing(true);
+    const formData = new FormData();
+    formData.append('audio_file', file);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/transcribe/`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data: TranscribeApiResponse = await response.json();
+
+      if (response.status === 202) { // Status 202 Accepted
+        console.log("Transcription job accepted:", data.message);
+        if (data.filename) {
+          pollForStatus(data.filename);
+        }
+      } else if (response.status === 409) { // Status 409 Conflict
+        console.log("Job already exists, fetching status for:", file.name);
+        setToastMessage("Transcription job already exists, fetching status...");
+        pollForStatus(file.name);
+      } else {
+        throw new Error(data.error || 'Failed to start transcription');
+      }
+    } catch (error: any) {
+      console.error("Transcription initiation failed:", error);
+      setToastMessage(`Error: ${error.message}`);
+      setIsTranscribing(false);
+    }
+  };
 
   const pollForStatus = async (filename: string) => {
     const intervalId = setInterval(async () => {
@@ -159,27 +222,26 @@ const App: React.FC = () => {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const data: ApiResponse = await response.json();
+        const data: StatusApiResponse = await response.json();
 
-        if (data.status === 'complete') {
+        if (data.status === 'complete' && data.result) {
           clearInterval(intervalId);
-          // @ts-ignore
-          const parsed = parseJsonTranscription(data); // Use updated parser
+          const parsed = parseJsonTranscription(data.result); // Use updated parser
           setSubtitles(parsed);
           setTranscriptionFileName(data.filename);
           setIsTranscribing(false);
-          alert('Transcription complete!');
+          setToastMessage('Transcription complete!');
         } else if (data.status === 'error') {
           clearInterval(intervalId);
           setIsTranscribing(false);
-          alert(`Transcription failed: ${data.result?.text || 'Unknown error'}`);
+          setToastMessage(`Transcription failed: ${data.result?.text || 'Unknown error'}`);
         }
         // If status is 'queued' or 'processing', do nothing and let the interval continue.
       } catch (error) {
         console.error("Polling error:", error);
         clearInterval(intervalId);
         setIsTranscribing(false);
-        alert('An error occurred while checking the transcription status.');
+        setToastMessage('An error occurred while checking the transcription status.');
       }
     }, 3000); // Poll every 3 seconds
   };
@@ -203,9 +265,18 @@ const App: React.FC = () => {
 
     const url = URL.createObjectURL(file);
 
+    // Reset state for the new audio file
+    setSubtitles([]);
+    setTranscriptionFileName(null);
+    if (audioRef.current) audioRef.current.currentTime = 0;
+    setCurrentTime(0);
+
     setAudioFile(file);
     setAudioFileName(file.name);
     setAudioSrc(url);
+
+    // Automatically start the transcription process
+    startTranscriptionProcess(file);
   }
 
   // Setup subtitle and audio dropzones
@@ -321,6 +392,13 @@ const App: React.FC = () => {
     return [...subtitles].sort((a, b) => a.startTime - b.startTime);
   }, [subtitles]);
 
+  const colorForConfidence = (confidence: number | undefined) => {
+    if (confidence === undefined) return 'text-gray-500';
+    if (confidence < 0.5) return 'text-red-500';
+    if (confidence < 0.75) return 'text-yellow-500';
+    return 'text-green-500';
+  };
+
   const uploadTranscriptionAudio = async () => {
     const formData = new FormData();
     console.log("Uploading audio file...");
@@ -360,20 +438,20 @@ const App: React.FC = () => {
     // const content = generateSRT();
     const content = copyRaw(subtitles);
     navigator.clipboard.writeText(content).then(() => {
-      alert('SRT content copied to clipboard!');
+      setToastMessage('Full transcription copied to clipboard!');
     }, (err) => {
       console.error('Could not copy text: ', err);
-      alert('Failed to copy SRT content.');
+      setToastMessage('Failed to copy SRT content.');
     });
   };
 
   const copySegmentToClipboard = (subtitle: SubtitleEntry) => {
     const content = copyRaw([subtitle]);
     navigator.clipboard.writeText(content).then(() => {
-      alert('Segment copied to clipboard!');
+      setToastMessage('Segment copied to clipboard!');
     }, (err) => {
       console.error('Could not copy text: ', err);
-      alert('Failed to copy SRT content.');
+      setToastMessage('Failed to copy SRT content.');
     });
   };
 
@@ -408,8 +486,15 @@ const App: React.FC = () => {
     </div>
   );
 
+  const Toast: React.FC<{ message: string }> = ({ message }) => (
+    <div className="fixed bottom-5 right-5 z-50 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg animate-pulse">
+      {message}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-100 p-4">
+      {toastMessage && <Toast message={toastMessage} />}
       <div className="max-w-7xl mx-auto bg-white rounded-lg shadow-md overflow-hidden">
         <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
           <h1 className="text-2xl font-bold text-gray-800">Transcription Editor</h1>
@@ -576,22 +661,33 @@ const App: React.FC = () => {
                           <div className="flex items-center space-x-2">
                             <button onClick={() => { jumpToTime(subtitle.startTime); setIsPlaying(true) }} className="p-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors" title="Jump to time"><FaPlay className="w-3 h-3" /></button>
                             <span className="font-mono">{formatTime(subtitle.startTime)}</span>
-                            <span>{subtitle.confidence !== undefined ? `Confidence: ${(subtitle.confidence * 100).toFixed(0)}%` : 'N/A'}</span>
+                            <span className="text-gray-500">Confidence:</span>
+                            <span
+                              className={`${colorForConfidence(subtitle.confidence)} font-mono`}
+                            >{subtitle.confidence !== undefined ? `${(subtitle.confidence * 100).toFixed(0)}%` : 'N/A'}</span>
                           </div>
                         </td>
                         <td className="px-6 py-4 w-3/5 text-sm text-gray-500">
-                          <textarea
-                            value={subtitle.text}
-                            onChange={(e) => updateSubtitleText(subtitle.id, e.target.value)}
-                            className="border rounded px-3 py-2 w-full min-h-[60px] text-sm font-mono bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500"
-                            placeholder="Enter subtitle text..."
-                          />
+                          <div className="flex items-center gap-2">
+                            <textarea
+                              value={subtitle.text}
+                              onChange={(e) => updateSubtitleText(subtitle.id, e.target.value)}
+                              // @ts-ignore
+                              style={{ fieldSizing: 'content' }}
+                              className="flex-grow border rounded px-3 py-2 min-h-[60px] text-sm font-mono bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500 focus:text-black resize-none"
+                              placeholder="Enter subtitle text..."
+                            />
+                            <button
+                              onClick={() => copySegmentToClipboard(subtitle)}
+                              className="inline-flex items-center p-2 border border-transparent rounded-md shadow-sm text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors"
+                              title="Copy segment text"
+                            >
+                              <FaClipboard className="h-4 w-4" />
+                            </button>
+                          </div>
                         </td>
                         <td className="px-6 py-4 w-1/5 text-sm text-gray-500 ">
                           <input type="checkbox" checked={subtitle.checked} onChange={() => markSubtitleChecked(subtitle.id, !subtitle.checked)} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" />
-                          <button onClick={() => copySegmentToClipboard(subtitle)} className="ml-2 inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">
-                            <FaClipboard className="h-4 w-4" />
-                          </button>
                         </td>
                       </tr>
                     ))}
@@ -605,9 +701,16 @@ const App: React.FC = () => {
                   className="border-2 border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center transition-colors duration-150 cursor-pointer hover:bg-gray-50"
                 >
                   <input {...getSubtitleInputProps()} disabled={!audioSrc} />
-                  {!audioSrc && <p className="text-center text-gray-600">Upload an audio file to begin transcription</p>}
-                  {(audioSrc && !isTranscribing) && <button onClick={uploadTranscriptionAudio} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors">Start Transcription</button>}
-                  {isTranscribing && <Spinner />}
+                  {isTranscribing ? (
+                    <Spinner />
+                  ) : (
+                    <p className="text-center text-gray-600">
+                      {audioSrc
+                        ? 'Or, you can drop a JSON transcription file here.'
+                        : 'Upload an audio file to begin.'
+                      }
+                    </p>
+                  )}
                 </div>
               </div>
             )}
