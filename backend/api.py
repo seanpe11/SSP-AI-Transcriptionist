@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import tempfile
 import os
 import uuid
+import torch
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -57,6 +58,11 @@ TABLE_NAME = "mdt_transcription_jobs"
 print("Loading Whisper model...")
 # Using "tiny" model for speed, can be changed to "base", "small", etc.
 model = whisper.load_model("tiny", device="cpu")
+# api.py
+# Check if CUDA is available and set the device
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using device: {device}")
+model = whisper.load_model("tiny" if device == "cuda" else "medium", device=device)
 print("✅ Whisper model loaded successfully.")
 
 

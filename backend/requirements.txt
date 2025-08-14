@@ -1,11 +1,12 @@
 # requirements.txt
+
 fastapi
 uvicorn
 gunicorn
 python-multipart
-requests
 whisper-timestamped
 supabase
+python-dotenv
 
 # For CPU-only inference, which is much smaller than the default
 torch --index-url https://download.pytorch.org/whl/cpu
