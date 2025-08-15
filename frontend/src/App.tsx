@@ -1,8 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { FaFileAudio, FaPlay, FaPause, FaSave, FaPlus, FaTrash, FaPen, FaRegFileAlt, FaRegFileAudio, FaClipboard, FaFileDownload, FaInfoCircle } from 'react-icons/fa';
-const API_BASE_URL = 'http://localhost:8000';
 import { ChangeEvent } from 'react';
+
+
+// const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'https://transcription-api-gpu-384958301784.us-central1.run.app';
 
 type SubtitleEntry = {
   id: number;
