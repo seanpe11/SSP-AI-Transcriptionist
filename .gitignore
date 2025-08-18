@@ -5,6 +5,7 @@
 # Node dependencies
 node_modules/
 /frontend/node_modules/
+/ssp-whisper-worker/node_modules/
 
 # Environment variables
 /backend/.env
