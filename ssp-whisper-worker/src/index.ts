@@ -1,9 +1,13 @@
+/*
+================================================================================
+File: src/index.ts
+Description: Main router for the Hono application.
+================================================================================
+*/
 import { fromHono } from "chanfana";
 import { Hono } from "hono";
-import { TaskCreate } from "./endpoints/taskCreate";
-import { TaskDelete } from "./endpoints/taskDelete";
-import { TaskFetch } from "./endpoints/taskFetch";
-import { TaskList } from "./endpoints/taskList";
+import { Transcribe } from "./endpoints/transcribe";
+import { Status } from "./endpoints/status";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
@@ -13,14 +17,9 @@ const openapi = fromHono(app, {
 	docs_url: "/docs",
 });
 
-// Register OpenAPI endpoints
-openapi.get("/api/tasks", TaskList);
-openapi.post("/api/tasks", TaskCreate);
-openapi.get("/api/tasks/:taskSlug", TaskFetch);
-openapi.delete("/api/tasks/:taskSlug", TaskDelete);
-
-// You may also register routes for non OpenAPI directly on Hono
-// app.get('/test', (c) => c.text('Hono!'))
+// Register OpenAPI endpoints for transcription API
+openapi.post("/api/transcribe", Transcribe);
+openapi.get("/api/status/:filename", Status);
 
 // Export the Hono app
 export default app;
