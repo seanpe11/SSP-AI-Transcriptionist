@@ -5,7 +5,8 @@ import { ChangeEvent } from 'react';
 
 
 // const API_BASE_URL = 'http://localhost:8000';
-const API_BASE_URL = 'https://transcription-api-gpu-384958301784.us-central1.run.app';
+// const API_BASE_URL = 'https://transcription-api-gpu-384958301784.us-central1.run.app';
+const API_BASE_URL = 'https://ssp-whisper-worker.sean-m-s-pe.workers.dev';
 
 type SubtitleEntry = {
   id: number;

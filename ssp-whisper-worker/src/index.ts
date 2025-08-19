@@ -6,11 +6,24 @@ Description: Main router for the Hono application.
 */
 import { fromHono } from "chanfana";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { Transcribe } from "./endpoints/transcribe";
 import { Status } from "./endpoints/status";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
+
+app.use(
+	"/*", // Apply to all routes
+	cors({
+		origin: [
+			"http://localhost:3000",
+			"https://transcriptions.seanpe.io",
+		],
+		allowMethods: ["GET", "POST", "OPTIONS"],
+		allowHeaders: ["Content-Type"],
+	}),
+);
 
 // Setup OpenAPI registry
 const openapi = fromHono(app, {
