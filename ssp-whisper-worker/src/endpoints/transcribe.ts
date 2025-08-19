@@ -2,8 +2,7 @@
 ================================================================================
 File: src/endpoints/transcribe.ts
 Description: Handles the initial audio upload and starts the transcription job.
-================================================================================
-*/
+================================================================================ */
 import { OpenAPIRoute } from "chanfana";
 import { z } from "zod";
 import { type AppContext, TranscribeResponse } from "../types";
@@ -117,6 +116,7 @@ export class Transcribe extends OpenAPIRoute {
 	}
 
 	async runTranscriptionInBackground(
+		// @ts-ignore
 		env: DotEnv,
 		jobId: string,
 		audioFile: File,
