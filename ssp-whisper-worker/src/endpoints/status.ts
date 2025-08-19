@@ -4,7 +4,7 @@ File: src/endpoints/status.ts
 Description: Fetches the status and result of a transcription job.
 ================================================================================
 */
-import { OpenAPIRoute, Path, Str } from "chanfana";
+import { OpenAPIRoute, Str } from "chanfana";
 import { z } from "zod";
 import { type AppContext, StatusResponse } from "../types";
 import { createClient } from "@supabase/supabase-js";
@@ -15,7 +15,7 @@ export class Status extends OpenAPIRoute {
 		summary: "Get the status of a transcription job by filename.",
 		request: {
 			params: z.object({
-				filename: Path(Str({ description: "The filename of the audio file." })),
+				filename: Str({ description: "The filename of the audio file." }),
 			}),
 		},
 		responses: {
@@ -34,8 +34,11 @@ export class Status extends OpenAPIRoute {
 	};
 
 	async handle(c: AppContext) {
-		const { filename } = await this.getValidatedData<typeof this.schema>();
+		// Correctly destructure the filename from the 'params' object
+		const { params: { filename } } = await this.getValidatedData<typeof this.schema>();
 		const supabase = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_KEY);
+
+		console.log(filename);
 
 		const { data: job, error } = await supabase
 			.from("mdt_transcription_jobs")

@@ -7,8 +7,10 @@ node_modules/
 /frontend/node_modules/
 /ssp-whisper-worker/node_modules/
 
+
 # Environment variables
 /backend/.env
+/ssp-whisper-worker/.env
 
 ./Transcripts/
 

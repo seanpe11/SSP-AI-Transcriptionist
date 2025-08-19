@@ -18,8 +18,8 @@ const openapi = fromHono(app, {
 });
 
 // Register OpenAPI endpoints for transcription API
-openapi.post("/api/transcribe", Transcribe);
-openapi.get("/api/status/:filename", Status);
+openapi.post("/transcribe", Transcribe);
+openapi.get("/status/:filename", Status);
 
 // Export the Hono app
 export default app;

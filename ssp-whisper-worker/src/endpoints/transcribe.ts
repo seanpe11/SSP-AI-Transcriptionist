@@ -9,7 +9,6 @@ import { z } from "zod";
 import { type AppContext, TranscribeResponse } from "../types";
 import { createClient } from "@supabase/supabase-js";
 import { OpenAI } from "openai";
-import { DotEnv } from "../types";
 
 // Schema for the 409 Conflict response
 const ConflictResponse = z.object({
@@ -139,10 +138,19 @@ export class Transcribe extends OpenAPIRoute {
 				response_format: "verbose_json", // To get segments and timestamps
 			});
 
+			const transformed = {
+				segments: transcription.segments.map(segment => ({
+					text: segment.text,
+					start: segment.start,
+					end: segment.end,
+					confidence: Math.exp(segment.avg_logprob),
+				})),
+			}
+
 			// Update job with the final result
 			await supabase
 				.from("mdt_transcription_jobs")
-				.update({ status: "complete", result: transcription })
+				.update({ status: "complete", result: transformed })
 				.eq("id", jobId);
 		} catch (error) {
 			console.error(`Transcription failed for job ${jobId}:`, error);
