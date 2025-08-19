@@ -139,6 +139,7 @@ export class Transcribe extends OpenAPIRoute {
 			});
 
 			const transformed = {
+				text: transcription.text,
 				segments: transcription.segments.map(segment => ({
 					text: segment.text,
 					start: segment.start,
