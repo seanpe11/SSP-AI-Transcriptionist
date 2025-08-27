@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useDropzone } from 'react-dropzone';
 import { FaFileAudio, FaPlay, FaPause, FaSave, FaPlus, FaTrash, FaPen, FaRegFileAlt, FaRegFileAudio, FaClipboard, FaFileDownload, FaInfoCircle } from 'react-icons/fa';
 import { ChangeEvent } from 'react';
-import { register, isRegistered } from '@tauri-apps/plugin-global-shortcut'
+import { register, unregisterAll } from '@tauri-apps/plugin-global-shortcut'
 
 
 // const API_BASE_URL = 'http://localhost:8000';
@@ -84,14 +84,18 @@ const App: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Register global shortcuts
-  //
-  // useEffect(() => {
-  //   (async () => {
-  //     await register(['Alt+A'], (event) => {
-  //       console.log(`Shortcut ${event.shortcut} triggered`);
-  //     });
-  //   })();
-  // }, []);
+  // registers the global shortcuts
+  useEffect(() => {
+    const registerShortcuts = async () => {
+      const result = await unregisterAll();
+      console.log("Registering global shortcuts...");
+      await register(['Alt+A', 'Alt+S'], (event) => {
+        console.log(`Shortcut ${event.shortcut} triggered`);
+      });
+    }
+
+    registerShortcuts();
+  }, []);
 
 
 
