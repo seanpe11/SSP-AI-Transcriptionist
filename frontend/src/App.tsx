@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useDropzone } from 'react-dropzone';
 import { FaFileAudio, FaPlay, FaPause, FaSave, FaPlus, FaTrash, FaPen, FaRegFileAlt, FaRegFileAudio, FaClipboard, FaFileDownload, FaInfoCircle } from 'react-icons/fa';
 import { ChangeEvent } from 'react';
+import { register, isRegistered } from '@tauri-apps/plugin-global-shortcut'
 
 
 // const API_BASE_URL = 'http://localhost:8000';
@@ -62,6 +63,8 @@ const parseTime = (timeString: string): number => {
   return h * 3600 + m * 60 + s + Number(ms) / 1000;
 };
 
+
+
 const App: React.FC = () => {
   const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
   const [transcriptionFileName, setTranscriptionFileName] = useState<string | null>(null);
@@ -79,6 +82,18 @@ const App: React.FC = () => {
   const transcriptionInputRef = useRef<HTMLInputElement>(null); // Renamed from srtInputRef
   const previousActiveSubtitleIdRef = useRef<number | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Register global shortcuts
+  //
+  // useEffect(() => {
+  //   (async () => {
+  //     await register(['Alt+A'], (event) => {
+  //       console.log(`Shortcut ${event.shortcut} triggered`);
+  //     });
+  //   })();
+  // }, []);
+
+
 
   useEffect(() => {
     if (toastMessage) {
@@ -537,7 +552,7 @@ const App: React.FC = () => {
       {toastMessage && <Toast message={toastMessage} />}
       <div className="max-w-7xl mx-auto bg-white rounded-lg shadow-md overflow-hidden">
         <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
-          <h1 className="text-2xl font-bold text-gray-800">Transcription Editor</h1>
+          <h1 className="text-2xl font-bold text-gray-800">SSP Transcription Editor</h1>
         </div>
 
         <div className="p-6 relative">
