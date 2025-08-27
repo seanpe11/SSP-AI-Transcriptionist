@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useDropzone } from 'react-dropzone';
 import { FaFileAudio, FaPlay, FaPause, FaSave, FaPlus, FaTrash, FaPen, FaRegFileAlt, FaRegFileAudio, FaClipboard, FaFileDownload, FaInfoCircle } from 'react-icons/fa';
 import { ChangeEvent } from 'react';
-import { register, unregisterAll } from '@tauri-apps/plugin-global-shortcut'
+import { listen, Event } from '@tauri-apps/api/event'
 
 
 // const API_BASE_URL = 'http://localhost:8000';
@@ -82,20 +82,10 @@ const App: React.FC = () => {
   const transcriptionInputRef = useRef<HTMLInputElement>(null); // Renamed from srtInputRef
   const previousActiveSubtitleIdRef = useRef<number | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  // Register global shortcuts
-  // registers the global shortcuts
-  useEffect(() => {
-    const registerShortcuts = async () => {
-      const result = await unregisterAll();
-      console.log("Registering global shortcuts...");
-      await register(['Alt+A', 'Alt+S'], (event) => {
-        console.log(`Shortcut ${event.shortcut} triggered`);
-      });
-    }
-
-    registerShortcuts();
-  }, []);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const waveformRef = useRef<HTMLCanvasElement>(null);
+  const animationRef = useRef<number | null>(null);
+  const tableBodyRef = useRef<HTMLTableSectionElement>(null);
 
 
 
@@ -108,10 +98,6 @@ const App: React.FC = () => {
     }
   }, [toastMessage]);
 
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const waveformRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number | null>(null);
-  const tableBodyRef = useRef<HTMLTableSectionElement>(null);
 
   // Parse JSON transcription file content
   const parseJsonTranscriptionFromFile = (content: string): SubtitleEntry[] => {
@@ -376,21 +362,12 @@ const App: React.FC = () => {
       const newCurrentTime = audioRef.current.currentTime;
       setCurrentTime(newCurrentTime);
 
-      // Use the ref to get the LATEST sorted subtitles
-      const currentSubtitles = sortedSubtitlesRef.current;
-      // --- Add this console.log ---
-      if (currentSubtitles.length > 0) {
-        console.log(
-          `Current Time: ${newCurrentTime.toFixed(2)} | First Subtitle Start: ${currentSubtitles[0].startTime.toFixed(2)} | First Subtitle End: ${currentSubtitles[0].endTime.toFixed(2)}`
-        );
-      }
-
-      const currentSubtitle = currentSubtitles.find(
+      const currentSubtitle = sortedSubtitles.find(
         sub => newCurrentTime >= sub.startTime && newCurrentTime <= sub.endTime
       );
 
       if (currentSubtitle) {
-        const subtitleIndex = currentSubtitles.findIndex(s => s.id === currentSubtitle.id);
+        const subtitleIndex = sortedSubtitles.findIndex(s => s.startTime === currentSubtitle.startTime);
         // Use a functional state update to avoid dependency on currentEditIndex
         setCurrentEditIndex(prevIndex => {
           if (prevIndex !== subtitleIndex) {
@@ -407,7 +384,7 @@ const App: React.FC = () => {
         animationRef.current = requestAnimationFrame(updateTimeDisplay);
       }
     }
-  }, [isPlaying]); // The dependency array is now much simpler and more stable
+  }, [isPlaying, currentTime]); 
 
   // Handle play/pause
   useEffect(() => {
@@ -434,8 +411,75 @@ const App: React.FC = () => {
     if (audioRef.current) {
       audioRef.current.currentTime = time;
       setCurrentTime(time);
+      console.log(time)
+      const found = sortedSubtitles.findIndex(s => s.startTime <= time && s.endTime >= time)
+      setCurrentEditIndex(found);
     }
   };
+
+  // PEDAL CONTROLS
+  const currentEditIndexRef = useRef<number | null>(null);
+  useEffect(() => { currentEditIndexRef.current = currentEditIndex }, [currentEditIndex]);
+  useEffect(() => {
+    const setupListener = async () => {
+      const unlisten = await listen<string>('shortcut-event', (event) => {
+        const shortcut = event.payload;
+        console.log(shortcut)
+        switch (shortcut) {
+          case 'left-pressed': {
+            const currentIndex = currentEditIndexRef.current;
+            const currentSubtitles = sortedSubtitlesRef.current;
+
+            if (currentIndex !== null && audioRef.current) {
+              // If we're at the start of a segment, jump to the previous one
+              if (audioRef.current.currentTime <= currentSubtitles[currentIndex].startTime + 0.1 && currentIndex > 0) {
+                jumpToTime(currentSubtitles[currentIndex - 1].startTime);
+              } else if (currentIndex <= 0) {
+                jumpToTime(0);
+              } else {
+                jumpToTime(currentSubtitles[currentIndex].startTime);
+              }
+            } else {
+              // If no active segment, jump to the beginning
+              jumpToTime(0);
+            }
+            break;
+          }
+
+          case 'center-pressed':
+            setIsPlaying(true);
+            break;
+
+          case 'center-released':
+            setIsPlaying(false);
+            break;
+
+          case 'right-pressed': {
+            const currentIndex = currentEditIndexRef.current;
+            const currentSubtitles = sortedSubtitlesRef.current;
+
+            if (currentIndex !== null && currentIndex < currentSubtitles.length - 1) {
+              console.log(`Current IDX: ${currentIndex}, moving to ${currentIndex+1}, ${currentSubtitles[currentIndex].startTime}, ${currentSubtitles[currentIndex+1].startTime}`)
+              jumpToTime(currentSubtitles[currentIndex + 1].startTime);
+              setCurrentEditIndex(currentIndex + 1)
+            }
+            break;
+          }
+
+          default:
+            break;
+        }
+      });
+      return unlisten;
+    };
+
+    const unlistenPromise = setupListener();
+
+    // Cleanup the listener when the component unmounts
+    return () => {
+      unlistenPromise.then(unlisten => unlisten());
+    };
+  }, []); // Empty dependency array ensures this runs only once
 
 
   const colorForConfidence = (confidence: number | undefined) => {
@@ -554,11 +598,7 @@ const App: React.FC = () => {
   return (
     <div className="max-h-screen min-h-screen bg-gray-100">
       {toastMessage && <Toast message={toastMessage} />}
-      <div className="max-w-7xl mx-auto bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
-          <h1 className="text-2xl font-bold text-gray-800">SSP Transcription Editor</h1>
-        </div>
-
+      <div className="max-h-full max-w-7xl my-0 mx-auto bg-white rounded-lg">
         <div className="p-6 relative">
           <div className="mt-0 mb-2 border rounded-lg overflow-hidden">
             {(audioSrc && subtitles.length > 0) && (
@@ -619,10 +659,10 @@ const App: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody ref={tableBodyRef} className="bg-white divide-y divide-gray-200">
-                    {sortedSubtitles.map((subtitle) => (
+                    {sortedSubtitles.map((subtitle, idx) => (
                       <tr
-                        key={subtitle.id}
-                        className={`${currentTime >= subtitle.startTime && currentTime <= subtitle.endTime ? 'bg-blue-50' : ''}`}
+                        key={subtitle.startTime}
+                        className={`${currentTime >= subtitle.startTime && currentTime < subtitle.endTime ? 'bg-blue-50' : ''}`}
                       >
                         <td className="px-6 py-4 w-1/5 whitespace-nowrap text-sm text-gray-500">
                           <div className="flex items-center space-x-2">
