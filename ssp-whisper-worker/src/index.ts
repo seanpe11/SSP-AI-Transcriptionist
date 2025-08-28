@@ -19,6 +19,7 @@ app.use(
 		origin: [
 			"http://localhost:3000",
 			"https://transcriptions.seanpe.io",
+			"tauri://localhost" 
 		],
 		allowMethods: ["GET", "POST", "OPTIONS"],
 		allowHeaders: ["Content-Type"],
