@@ -46,6 +46,7 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost:5173",
         "https://transcriptions.seanpe.io",
+        "tauri://localhost" 
     ],
     allow_credentials=True,
     allow_methods=["*"],

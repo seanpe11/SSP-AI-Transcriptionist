@@ -3,6 +3,7 @@ import { useDropzone } from 'react-dropzone';
 import { FaFileAudio, FaPlay, FaPause, FaSave, FaPlus, FaTrash, FaPen, FaRegFileAlt, FaRegFileAudio, FaClipboard, FaFileDownload, FaInfoCircle } from 'react-icons/fa';
 import { ChangeEvent } from 'react';
 import { listen, Event } from '@tauri-apps/api/event'
+import { convertToMp3, splitChunks } from './fileUtils.ts'
 
 
 // const API_BASE_URL = 'http://localhost:8000';
