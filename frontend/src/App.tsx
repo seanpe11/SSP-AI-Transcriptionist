@@ -3,8 +3,8 @@ import { useDropzone } from 'react-dropzone';
 import { FaFileAudio, FaPlay, FaPause, FaSave, FaPlus, FaTrash, FaPen, FaRegFileAlt, FaRegFileAudio, FaClipboard, FaFileDownload, FaInfoCircle } from 'react-icons/fa';
 import { ChangeEvent } from 'react';
 import { listen, Event } from '@tauri-apps/api/event'
-import { convertToMp3, splitChunks } from './fileUtils.ts'
-
+import { invoke } from "@tauri-apps/api/core"
+import { convertToMp3, splitChunks } from './fileUtils'
 
 // const API_BASE_URL = 'http://localhost:8000';
 // const API_BASE_URL = 'https://transcription-api-gpu-384958301784.us-central1.run.app';
@@ -83,6 +83,7 @@ const App: React.FC = () => {
   const transcriptionInputRef = useRef<HTMLInputElement>(null); // Renamed from srtInputRef
   const previousActiveSubtitleIdRef = useRef<number | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isPedalConnected, setIsPedalConnected] = useState<boolean>(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const waveformRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
@@ -421,9 +422,33 @@ const App: React.FC = () => {
   // PEDAL CONTROLS
   const currentEditIndexRef = useRef<number | null>(null);
   useEffect(() => { currentEditIndexRef.current = currentEditIndex }, [currentEditIndex]);
+  // check pedal connection
   useEffect(() => {
+    const checkInitialStatus = async () => {
+      try {
+        const connected = await invoke<boolean>('is_pedal_connected');
+        if (connected) {
+          setIsPedalConnected(true);
+          console.log("Pedal was already connected on startup.");
+        }
+      } catch (e) {
+        console.error("Error checking initial pedal status:", e);
+      }
+    };
+
+    (async () => { await checkInitialStatus() })();
+
+    const listenForPedalDetection = async () => {
+      const unlisten = await listen<string>('pedal-found', (event) => {
+        setIsPedalConnected(true);
+      })
+      return unlisten
+    }
+
+    
+
     const setupListener = async () => {
-      const unlisten = await listen<string>('shortcut-event', (event) => {
+      const unlisten = await listen<string>('pedal-action', (event) => {
         const shortcut = event.payload;
         console.log(shortcut)
         switch (shortcut) {
@@ -462,7 +487,8 @@ const App: React.FC = () => {
             if (currentIndex !== null && currentIndex < currentSubtitles.length - 1) {
               console.log(`Current IDX: ${currentIndex}, moving to ${currentIndex+1}, ${currentSubtitles[currentIndex].startTime}, ${currentSubtitles[currentIndex+1].startTime}`)
               jumpToTime(currentSubtitles[currentIndex + 1].startTime);
-              setCurrentEditIndex(currentIndex + 1)
+              // @ts-ignore
+              setCurrentEditIndex((prev) => prev + 1);
             }
             break;
           }
@@ -475,10 +501,12 @@ const App: React.FC = () => {
     };
 
     const unlistenPromise = setupListener();
+    const unlistenPedalPromise = listenForPedalDetection();
 
     // Cleanup the listener when the component unmounts
     return () => {
       unlistenPromise.then(unlisten => unlisten());
+      unlistenPedalPromise.then(unlisten => unlisten());
     };
   }, []); // Empty dependency array ensures this runs only once
 
@@ -821,6 +849,7 @@ const App: React.FC = () => {
               </p>
             </div>
           )}
+          <div>{isPedalConnected ? <span>VEC3 Infinity Pedal Connected!</span> : <span>No pedal found</span>}</div>
         </div>
       </div>
     </div >

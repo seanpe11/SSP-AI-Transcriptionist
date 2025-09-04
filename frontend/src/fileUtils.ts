@@ -1,12 +1,8 @@
-const convertToMp3 = () => {
-
+export const convertToMp3 = () => {
+    console.log("split chunk")
 }
 
 
-const splitChunks = () => {
-
+export const splitChunks = () => {
+    console.log("split chunk")
 }
-
-
-export convertToMp3;
-export splitChunks;
