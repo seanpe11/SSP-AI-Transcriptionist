@@ -1,14 +1,23 @@
 {
-    "include": [
-        "./src/**/*"
-    ],
-    "compilerOptions": {
-        "strict": true,
-        "esModuleInterop": true,
-        "lib": [
-            "dom",
-            "esnext"
-        ],
-        "jsx": "react-jsx"
-    }
+  "compilerOptions": {
+    // --- YOUR EXISTING OPTIONS ---
+    "strict": true,
+    "esModuleInterop": true,
+    "lib": ["dom", "esnext"],
+    "jsx": "react-jsx",
+
+    // --- CRITICAL ADDITIONS ---
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+
+    // --- RECOMMENDED BEST PRACTICES ---
+    "target": "ESNext", // Specify what version of JS to target
+    "isolatedModules": true, // Required by modern bundlers like Vite
+    "noEmit": true, // Lets your bundler (Vite/CRA) handle creating the final JS files
+    "resolveJsonModule": true, // Allows you to import JSON files
+    "skipLibCheck": true // Speeds up your project by not checking library files
+  },
+  "include": [
+    "src" // Using "src" is a bit cleaner than "./src/**/*" but both work
+  ]
 }

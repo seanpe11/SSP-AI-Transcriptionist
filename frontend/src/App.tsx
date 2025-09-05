@@ -1,515 +1,117 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { FaFileAudio, FaPlay, FaPause, FaSave, FaPlus, FaTrash, FaPen, FaRegFileAlt, FaRegFileAudio, FaClipboard, FaFileDownload, FaInfoCircle } from 'react-icons/fa';
-import { ChangeEvent } from 'react';
-import { listen, Event } from '@tauri-apps/api/event'
-import { invoke } from "@tauri-apps/api/core"
-import { convertToMp3, splitChunks } from './fileUtils'
+import React, { useState, useRef, useEffect } from 'react';
+import { FaFileAudio, FaPlay, FaPause, FaClipboard, FaRegFileAudio, FaInfoCircle } from 'react-icons/fa';
 
-// const API_BASE_URL = 'http://localhost:8000';
-// const API_BASE_URL = 'https://transcription-api-gpu-384958301784.us-central1.run.app';
-const API_BASE_URL = 'https://ssp-whisper-worker.sean-m-s-pe.workers.dev';
+// Import hooks
+import { useAudioPlayer, formatTime } from './hooks/useAudioPlayer';
+import { useTranscription } from './hooks/useTranscription';
+import { useTauriEvents } from './hooks/useTauriEvents';
 
-type SubtitleEntry = {
-  id: number;
-  startTime: number;
-  endTime: number;
-  text: string;
-  confidence?: number; // Added confidence field
-  checked?: boolean;
-};
+// Import types (assuming they are in a separate file)
+import { SubtitleEntry } from './types';
 
-interface JsonSegment {
-  id: number;
-  start: number;
-  end: number;
-  text: string;
-  confidence?: number;
-}
+// UI Components
+const Spinner: React.FC = () => (
+  <div className="flex flex-col items-center justify-center gap-4">
+    <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+    <p className="text-gray-600 font-medium">Transcription in progress...</p>
+  </div>
+);
 
-interface TranscribeApiResponse {
-  filename?: string;
-  error?: string;
-  job_id?: string;
-  message?: string;
-}
-
-interface StatusApiResponse {
-  id: string;
-  status: "processing" | "complete" | "error";
-  result: JsonTranscription | null;
-  filename: string;
-}
-
-// This interface represents the overall structure of the JSON file.
-interface JsonTranscription {
-  text: string;
-  segments: JsonSegment[];
-  language?: string;
-}
-
-
-const formatTime = (seconds: number): string => {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  const ms = Math.floor((seconds % 1) * 1000);
-
-  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
-};
-
-const parseTime = (timeString: string): number => {
-  const [hms, ms] = timeString.split(',');
-  const [h, m, s] = hms.split(':').map(Number);
-  return h * 3600 + m * 60 + s + Number(ms) / 1000;
-};
-
-
+const Toast: React.FC<{ message: string }> = ({ message }) => (
+  <div className="fixed bottom-5 right-5 z-50 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg animate-pulse">
+    {message}
+  </div>
+);
 
 const App: React.FC = () => {
-  const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
-  const [transcriptionFileName, setTranscriptionFileName] = useState<string | null>(null);
-  const [audioSrc, setAudioSrc] = useState<string | null>(null);
-  const [audioFileName, setAudioFileName] = useState<string | null>(null);
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [autoScroll, setAutoScroll] = useState(true);
-  const [currentTime, setCurrentTime] = useState(0);
+  // === HOOKS INITIALIZATION ===
+  const {
+    audioRef, waveformRef, audioInputRef, audioSrc, audioFileName, audioFile, isPlaying,
+    setIsPlaying, currentTime, duration, jumpToTime, handleWaveformClick, getAudioRootProps,
+    getAudioInputProps, triggerAudioInputChange, handleAudioChange,
+  } = useAudioPlayer();
+
+  const {
+    subtitles, sortedSubtitles, transcriptionFileName, isTranscribing, toastMessage, setToastMessage,
+    updateSubtitleText, markSubtitleChecked, getSubtitleRootProps, getSubtitleInputProps,
+  } = useTranscription(audioFile);
+
+  // === UI STATE & REFS ===
   const [currentEditIndex, setCurrentEditIndex] = useState<number | null>(null);
-  const [waveform, setWaveform] = useState<HTMLCanvasElement | null>(null);
-  const [duration, setDuration] = useState(0);
-  const audioInputRef = useRef<HTMLInputElement>(null);
-  const transcriptionInputRef = useRef<HTMLInputElement>(null); // Renamed from srtInputRef
-  const previousActiveSubtitleIdRef = useRef<number | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [isPedalConnected, setIsPedalConnected] = useState<boolean>(false);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const waveformRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number | null>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
   const tableBodyRef = useRef<HTMLTableSectionElement>(null);
+  const currentEditIndexRef = useRef<number | null>(null); // Ref for Tauri callbacks
+  useEffect(() => { currentEditIndexRef.current = currentEditIndex }, [currentEditIndex]);
 
+  // === "GLUE" LOGIC ===
 
-
+  // Effect to hide toast message after a delay
   useEffect(() => {
     if (toastMessage) {
-      const timer = setTimeout(() => {
-        setToastMessage(null);
-      }, 3000); // Hide toast after 3 seconds
+      const timer = setTimeout(() => setToastMessage(null), 3000);
       return () => clearTimeout(timer);
     }
-  }, [toastMessage]);
+  }, [toastMessage, setToastMessage]);
 
+  // Effect to link audio currentTime to the active subtitle row
+  useEffect(() => {
+    const activeIndex = sortedSubtitles.findIndex(
+      sub => currentTime >= sub.startTime && currentTime <= sub.endTime
+    );
+    setCurrentEditIndex(activeIndex !== -1 ? activeIndex : null);
+  }, [currentTime, sortedSubtitles]);
 
-  // Parse JSON transcription file content
-  const parseJsonTranscriptionFromFile = (content: string): SubtitleEntry[] => {
-    try {
-      const result = JSON.parse(content);
-      const data: JsonTranscription = result.result;
-
-      if (!data.segments || !Array.isArray(data.segments)) {
-        console.error("Invalid JSON format: 'segments' array not found.");
-        return [];
+  // Auto-scroll to the active subtitle
+  useEffect(() => {
+    if (autoScroll && currentEditIndex !== null && tableBodyRef.current) {
+      const activeRow = tableBodyRef.current.children[currentEditIndex] as HTMLTableRowElement;
+      if (activeRow) {
+        activeRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-
-      return data.segments.map(seg => ({
-        id: seg.id,
-        startTime: seg.start,
-        endTime: seg.end,
-        text: seg.text.trim(),
-        confidence: seg.confidence,
-      }));
-    } catch (error) {
-      console.error("Failed to parse JSON file:", error);
-      setToastMessage("Invalid JSON file. Please check the file format and try again.");
-      return [];
     }
-  };
+  }, [currentEditIndex, autoScroll]);
 
-  const parseJsonTranscription = (result: JsonTranscription): SubtitleEntry[] => {
-    try {
-      return result.segments.map(seg => ({
-        id: seg.id,
-        startTime: seg.start,
-        endTime: seg.end,
-        text: seg.text.trim(),
-        confidence: seg.confidence,
-      }));
-    } catch (error) {
-      console.error("Failed to parse JSON response:", error);
-      return [];
-    }
-  };
-
-  // Generate SRT file content (for export)
-  const generateSRT = (): string => {
-    return subtitles
-      .sort((a, b) => a.startTime - b.startTime)
-      .map((entry, index) => {
-        const newId = index + 1;
-        const startTime = formatTime(entry.startTime);
-        const endTime = formatTime(entry.endTime);
-        return `${newId}\n${startTime} --> ${endTime}\n${entry.text}`;
-      })
-      .join('\n\n');
-  };
-
-  // Handle transcription file drop
-  const onTranscriptionDrop = useCallback((acceptedFiles: File[]) => {
-    const file = acceptedFiles[0];
-    if (!file) return;
-    loadNewTranscription(file);
-  }, []);
-
-  // Trigger file input click
-  const triggerTranscriptionInputChange = () => {
-    transcriptionInputRef.current?.click();
-  };
-
-  // Handle transcription file change from input
-  const handleTranscriptionChange = (e: ChangeEvent<HTMLInputElement>) => {
-    loadNewTranscription(e.target.files?.[0]);
-  };
-
-  // Load and process the new transcription file
-  const loadNewTranscription = (file: File | null | undefined) => {
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target?.result as string;
-      const parsed = parseJsonTranscriptionFromFile(content);
-      setTranscriptionFileName(file.name);
-      setSubtitles(parsed);
-    };
-    reader.readAsText(file);
-  };
-
-
-  // Handle audio file drop (uses loadNewAudio)
-  const onAudioDrop = useCallback((acceptedFiles: File[]) => {
-    loadNewAudio(acceptedFiles[0]);
-  }, [audioSrc]);
-
-  const startTranscriptionProcess = async (file: File) => {
-    setIsTranscribing(true);
-    const formData = new FormData();
-    formData.append('audio_file', file);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/transcribe`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data: TranscribeApiResponse = await response.json();
-
-      if (response.status === 202) { // Status 202 Accepted
-        console.log("Transcription job accepted:", data.message);
-        if (data.filename) {
-          pollForStatus(data.filename);
-        }
-      } else if (response.status === 409) { // Status 409 Conflict
-        console.log("Job already exists, fetching status for:", file.name);
-        setToastMessage("Transcription job already exists, fetching status...");
-        pollForStatus(file.name);
+  // Pedal control handlers
+  const handlePedalPrev = () => {
+    const currentIndex = currentEditIndexRef.current;
+    if (currentIndex !== null && audioRef.current) {
+      // If near start of a segment, jump to previous one
+      if (audioRef.current.currentTime <= sortedSubtitles[currentIndex].startTime + 0.2 && currentIndex > 0) {
+        jumpToTime(sortedSubtitles[currentIndex - 1].startTime);
       } else {
-        throw new Error(data.error || 'Failed to start transcription');
+        jumpToTime(sortedSubtitles[currentIndex].startTime);
       }
-    } catch (error: any) {
-      console.error("Transcription initiation failed:", error);
-      setToastMessage(`Error: ${error.message}`);
-      setIsTranscribing(false);
-    }
-  };
-
-  const pollForStatus = async (filename: string) => {
-    const intervalId = setInterval(async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/status/${filename}`);
-        if (!response.ok) {
-          if (response.status === 404) {
-            console.log("Job not found yet, still polling...");
-            return; // Continue polling
-          }
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data: StatusApiResponse = await response.json();
-
-        if (data.status === 'complete' && data.result) {
-          clearInterval(intervalId);
-          const parsed = parseJsonTranscription(data.result); // Use updated parser
-          setSubtitles(parsed);
-          setTranscriptionFileName(data.filename);
-          setIsTranscribing(false);
-          setToastMessage('Transcription complete!');
-        } else if (data.status === 'error') {
-          clearInterval(intervalId);
-          setIsTranscribing(false);
-          setToastMessage(`Transcription failed: ${data.result?.text || 'Unknown error'}`);
-        }
-        // If status is 'queued' or 'processing', do nothing and let the interval continue.
-      } catch (error) {
-        console.error("Polling error:", error);
-        clearInterval(intervalId);
-        setIsTranscribing(false);
-        setToastMessage('An error occurred while checking the transcription status.');
-      }
-    }, 3000); // Poll every 3 seconds
-  };
-
-  const triggerAudioInputChange = () => {
-    audioInputRef.current?.click();
-  };
-
-  // Handle audio file change via input (uses loadNewAudio)
-  const handleAudioChange = (e: ChangeEvent<HTMLInputElement>) => {
-    loadNewAudio(e.target.files?.[0]);
-    if (e.target) e.target.value = '';
-  };
-
-  const loadNewAudio = (file: File | null | undefined) => {
-    if (!file) return;
-
-    if (audioSrc) {
-      URL.revokeObjectURL(audioSrc);
-    }
-
-    const url = URL.createObjectURL(file);
-
-    // Reset state for the new audio file
-    setSubtitles([]);
-    setTranscriptionFileName(null);
-    if (audioRef.current) audioRef.current.currentTime = 0;
-    setCurrentTime(0);
-
-    setAudioFile(file);
-    setAudioFileName(file.name);
-    setAudioSrc(url);
-
-    // Automatically start the transcription process
-    startTranscriptionProcess(file);
-  }
-
-  // Setup subtitle and audio dropzones
-  const {
-    getRootProps: getSubtitleRootProps,
-    getInputProps: getSubtitleInputProps,
-  } = useDropzone({
-    onDrop: onTranscriptionDrop,
-    accept: { 'application/json': ['.json'] }, // Accept JSON files
-    multiple: false,
-  });
-
-  const {
-    getRootProps: getAudioRootProps,
-    getInputProps: getAudioInputProps,
-  } = useDropzone({
-    onDrop: onAudioDrop,
-    accept: { 'audio/*': [] },
-    multiple: false,
-  });
-
-  // Draw waveform
-  useEffect(() => {
-    if (!audioSrc || !waveformRef.current) return;
-
-    const canvas = waveformRef.current;
-    setWaveform(canvas);
-    const audio = new Audio(audioSrc);
-    audio.addEventListener('loadedmetadata', () => {
-      setDuration(audio.duration);
-
-      const context = new AudioContext();
-      fetch(audioSrc)
-        .then(response => response.arrayBuffer())
-        .then(buffer => context.decodeAudioData(buffer))
-        .then(audioBuffer => {
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-          ctx.fillStyle = '#f3f4f6';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          const data = audioBuffer.getChannelData(0);
-          const step = Math.ceil(data.length / canvas.width);
-          const amp = canvas.height / 2;
-          ctx.fillStyle = '#60a5fa';
-          for (let i = 0; i < canvas.width; i++) {
-            let min = 1.0;
-            let max = -1.0;
-            for (let j = 0; j < step; j++) {
-              const datum = data[(i * step) + j];
-              if (datum < min) min = datum;
-              if (datum > max) max = datum;
-            }
-            ctx.fillRect(i, (1 + min) * amp, 1, Math.max(1, (max - min) * amp));
-          }
-        });
-    });
-  }, [audioSrc]);
-
-  // Memoized sorted subtitles
-  const sortedSubtitles = useMemo(() => {
-    return [...subtitles].sort((a, b) => a.startTime - b.startTime);
-  }, [subtitles]);
-
-  const sortedSubtitlesRef = useRef<SubtitleEntry[]>([]);
-  useEffect(() => {
-    sortedSubtitlesRef.current = sortedSubtitles;
-  }, [sortedSubtitles]);
-
-  // Update audio time display and waveform position
-  const updateTimeDisplay = useCallback(() => {
-    if (audioRef.current) {
-      const newCurrentTime = audioRef.current.currentTime;
-      setCurrentTime(newCurrentTime);
-
-      const currentSubtitle = sortedSubtitles.find(
-        sub => newCurrentTime >= sub.startTime && newCurrentTime <= sub.endTime
-      );
-
-      if (currentSubtitle) {
-        const subtitleIndex = sortedSubtitles.findIndex(s => s.startTime === currentSubtitle.startTime);
-        // Use a functional state update to avoid dependency on currentEditIndex
-        setCurrentEditIndex(prevIndex => {
-          if (prevIndex !== subtitleIndex) {
-            console.log("Setting new index:", subtitleIndex); // You should see this log now
-            return subtitleIndex;
-          }
-          return prevIndex;
-        });
-      } else {
-        setCurrentEditIndex(null);
-      }
-
-      if (isPlaying) {
-        animationRef.current = requestAnimationFrame(updateTimeDisplay);
-      }
-    }
-  }, [isPlaying, currentTime]); 
-
-  // Handle play/pause
-  useEffect(() => {
-    if (isPlaying) {
-      audioRef.current?.play();
-      animationRef.current = requestAnimationFrame(updateTimeDisplay);
     } else {
-      audioRef.current?.pause();
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
-    }
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
-    };
-  }, [isPlaying, updateTimeDisplay]);
-
-  // Jump to a specific time
-  const jumpToTime = (time: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = time;
-      setCurrentTime(time);
-      console.log(time)
-      const found = sortedSubtitles.findIndex(s => s.startTime <= time && s.endTime >= time)
-      setCurrentEditIndex(found);
+      jumpToTime(0);
     }
   };
 
-  // PEDAL CONTROLS
-  const currentEditIndexRef = useRef<number | null>(null);
-  useEffect(() => { currentEditIndexRef.current = currentEditIndex }, [currentEditIndex]);
-  // check pedal connection
-  useEffect(() => {
-    const checkInitialStatus = async () => {
-      try {
-        const connected = await invoke<boolean>('is_pedal_connected');
-        if (connected) {
-          setIsPedalConnected(true);
-          console.log("Pedal was already connected on startup.");
-        }
-      } catch (e) {
-        console.error("Error checking initial pedal status:", e);
-      }
-    };
-
-    (async () => { await checkInitialStatus() })();
-
-    const listenForPedalDetection = async () => {
-      const unlisten = await listen<string>('pedal-found', (event) => {
-        setIsPedalConnected(true);
-      })
-      return unlisten
+  const handlePedalNext = () => {
+    const currentIndex = currentEditIndexRef.current;
+    if (currentIndex !== null && currentIndex < sortedSubtitles.length - 1) {
+      jumpToTime(sortedSubtitles[currentIndex + 1].startTime);
     }
+  };
 
-    
+  const { isPedalConnected } = useTauriEvents({
+    onPlay: () => setIsPlaying(true),
+    onPause: () => setIsPlaying(false),
+    onNext: handlePedalNext,
+    onPrev: handlePedalPrev,
+  });
 
-    const setupListener = async () => {
-      const unlisten = await listen<string>('pedal-action', (event) => {
-        const shortcut = event.payload;
-        console.log(shortcut)
-        switch (shortcut) {
-          case 'left-pressed': {
-            const currentIndex = currentEditIndexRef.current;
-            const currentSubtitles = sortedSubtitlesRef.current;
+  // === UTILITY / HELPER FUNCTIONS FOR UI ===
+  const copyRaw = (subs: SubtitleEntry[]) => subs.map(sub => sub.text.trim()).join(' ');
 
-            if (currentIndex !== null && audioRef.current) {
-              // If we're at the start of a segment, jump to the previous one
-              if (audioRef.current.currentTime <= currentSubtitles[currentIndex].startTime + 0.1 && currentIndex > 0) {
-                jumpToTime(currentSubtitles[currentIndex - 1].startTime);
-              } else if (currentIndex <= 0) {
-                jumpToTime(0);
-              } else {
-                jumpToTime(currentSubtitles[currentIndex].startTime);
-              }
-            } else {
-              // If no active segment, jump to the beginning
-              jumpToTime(0);
-            }
-            break;
-          }
+  const copySRTToClipboard = () => {
+    const content = copyRaw(subtitles);
+    navigator.clipboard.writeText(content).then(() => setToastMessage('Full transcription copied!'));
+  };
 
-          case 'center-pressed':
-            setIsPlaying(true);
-            break;
-
-          case 'center-released':
-            setIsPlaying(false);
-            break;
-
-          case 'right-pressed': {
-            const currentIndex = currentEditIndexRef.current;
-            const currentSubtitles = sortedSubtitlesRef.current;
-
-            if (currentIndex !== null && currentIndex < currentSubtitles.length - 1) {
-              console.log(`Current IDX: ${currentIndex}, moving to ${currentIndex+1}, ${currentSubtitles[currentIndex].startTime}, ${currentSubtitles[currentIndex+1].startTime}`)
-              jumpToTime(currentSubtitles[currentIndex + 1].startTime);
-              // @ts-ignore
-              setCurrentEditIndex((prev) => prev + 1);
-            }
-            break;
-          }
-
-          default:
-            break;
-        }
-      });
-      return unlisten;
-    };
-
-    const unlistenPromise = setupListener();
-    const unlistenPedalPromise = listenForPedalDetection();
-
-    // Cleanup the listener when the component unmounts
-    return () => {
-      unlistenPromise.then(unlisten => unlisten());
-      unlistenPedalPromise.then(unlisten => unlisten());
-    };
-  }, []); // Empty dependency array ensures this runs only once
-
+  const copySegmentToClipboard = (subtitle: SubtitleEntry) => {
+    const content = copyRaw([subtitle]);
+    navigator.clipboard.writeText(content).then(() => setToastMessage('Segment copied!'));
+  };
 
   const colorForConfidence = (confidence: number | undefined) => {
     if (confidence === undefined) return 'text-gray-500';
@@ -518,111 +120,6 @@ const App: React.FC = () => {
     return 'text-green-500';
   };
 
-  const uploadTranscriptionAudio = async () => {
-    const formData = new FormData();
-    console.log("Uploading audio file...");
-    if (!audioFile) return;
-    formData.append('audio_file', audioFile);
-
-    const response = await fetch('http://localhost:8000/transcribe/', {
-      method: 'POST',
-      body: formData,
-    });
-
-    const data = await response.json();
-    console.log(data);
-  };
-
-  // Update subtitle text
-  const updateSubtitleText = (id: number, text: string) => {
-    setSubtitles(
-      subtitles.map(sub => sub.id === id ? { ...sub, text, checked: true } : sub)
-    );
-  };
-
-  const markSubtitleChecked = (id: number, checked: boolean) => {
-    setSubtitles(
-      subtitles.map(sub => sub.id === id ? { ...sub, checked } : sub)
-    );
-  };
-
-
-  const copyRaw = (subtitles: SubtitleEntry[]) => {
-    return subtitles
-      .map(sub => `${sub.text.trim()}`)
-      .join(' ');
-  };
-  // Function to copy segment content to clipboard
-  const copySRTToClipboard = () => {
-    // const content = generateSRT();
-    const content = copyRaw(subtitles);
-    navigator.clipboard.writeText(content).then(() => {
-      setToastMessage('Full transcription copied to clipboard!');
-    }, (err) => {
-      console.error('Could not copy text: ', err);
-      setToastMessage('Failed to copy SRT content.');
-    });
-  };
-
-  const copySegmentToClipboard = (subtitle: SubtitleEntry) => {
-    const content = copyRaw([subtitle]);
-    navigator.clipboard.writeText(content).then(() => {
-      setToastMessage('Segment copied to clipboard!');
-    }, (err) => {
-      console.error('Could not copy text: ', err);
-      setToastMessage('Failed to copy SRT content.');
-    });
-  };
-
-  // Function to download the SRT file
-  const downloadSRT = () => {
-    const content = generateSRT();
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = transcriptionFileName ? `${transcriptionFileName.split('.')[0]}.srt` : 'subtitles.srt';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  // Auto-scroll to the active subtitle
-  useEffect(() => {
-    if (autoScroll && currentEditIndex !== null && tableBodyRef.current) {
-      const activeRow = tableBodyRef.current.children[currentEditIndex] as HTMLTableRowElement;
-      if (activeRow) {
-        activeRow.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        });
-      }
-    }
-  }, [currentEditIndex, autoScroll]);
-
-  // Set current time from waveform click
-  const handleWaveformClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!waveformRef.current || duration === 0) return;
-    const rect = waveformRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const clickTimeRatio = x / rect.width;
-    const newTime = clickTimeRatio * duration;
-    jumpToTime(newTime);
-  };
-
-  const Spinner: React.FC = () => (
-    <div className="flex flex-col items-center justify-center gap-4">
-      <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-      <p className="text-gray-600 font-medium">Transcription in progress, please wait...</p>
-    </div>
-  );
-
-  const Toast: React.FC<{ message: string }> = ({ message }) => (
-    <div className="fixed bottom-5 right-5 z-50 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg animate-pulse">
-      {message}
-    </div>
-  );
 
   return (
     <div className="max-h-screen min-h-screen bg-gray-100">
@@ -688,7 +185,7 @@ const App: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody ref={tableBodyRef} className="bg-white divide-y divide-gray-200">
-                    {sortedSubtitles.map((subtitle, idx) => (
+                    {sortedSubtitles.map((subtitle) => (
                       <tr
                         key={subtitle.startTime}
                         className={`${currentTime >= subtitle.startTime && currentTime < subtitle.endTime ? 'bg-blue-50' : ''}`}
