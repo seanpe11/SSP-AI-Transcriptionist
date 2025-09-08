@@ -1,53 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { FaFileAudio, FaPlay, FaPause, FaSave, FaPlus, FaTrash, FaPen, FaRegFileAlt, FaRegFileAudio, FaClipboard, FaFileDownload, FaInfoCircle } from 'react-icons/fa';
+import { FaFileAudio, FaPlay, FaPause, FaRegFileAudio, FaClipboard, FaTable, FaParagraph, FaInfoCircle } from 'react-icons/fa';
 import { ChangeEvent } from 'react';
 import { listen, Event } from '@tauri-apps/api/event'
 import { invoke } from "@tauri-apps/api/core"
 import { convertToMp3, splitChunks } from './fileUtils'
+import SubtitleTable from './components/SubtitleTable'
+import SubtitleParagraph from './components/SubtitleParagraph'
+import { SubtitleEntry, JsonTranscription, StatusApiResponse, TranscribeApiResponse } from './types'
 
 // const API_BASE_URL = 'http://localhost:8000';
 // const API_BASE_URL = 'https://transcription-api-gpu-384958301784.us-central1.run.app';
 const API_BASE_URL = 'https://ssp-whisper-worker.sean-m-s-pe.workers.dev';
-
-type SubtitleEntry = {
-  id: number;
-  startTime: number;
-  endTime: number;
-  text: string;
-  confidence?: number; // Added confidence field
-  checked?: boolean;
-};
-
-interface JsonSegment {
-  id: number;
-  start: number;
-  end: number;
-  text: string;
-  confidence?: number;
-}
-
-interface TranscribeApiResponse {
-  filename?: string;
-  error?: string;
-  job_id?: string;
-  message?: string;
-}
-
-interface StatusApiResponse {
-  id: string;
-  status: "processing" | "complete" | "error";
-  result: JsonTranscription | null;
-  filename: string;
-}
-
-// This interface represents the overall structure of the JSON file.
-interface JsonTranscription {
-  text: string;
-  segments: JsonSegment[];
-  language?: string;
-}
-
 
 const formatTime = (seconds: number): string => {
   const h = Math.floor(seconds / 3600);
@@ -57,14 +21,6 @@ const formatTime = (seconds: number): string => {
 
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
 };
-
-const parseTime = (timeString: string): number => {
-  const [hms, ms] = timeString.split(',');
-  const [h, m, s] = hms.split(':').map(Number);
-  return h * 3600 + m * 60 + s + Number(ms) / 1000;
-};
-
-
 
 const App: React.FC = () => {
   const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
@@ -88,6 +44,7 @@ const App: React.FC = () => {
   const waveformRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
   const tableBodyRef = useRef<HTMLTableSectionElement>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'paragraph'>('paragraph');
 
 
 
@@ -386,7 +343,7 @@ const App: React.FC = () => {
         animationRef.current = requestAnimationFrame(updateTimeDisplay);
       }
     }
-  }, [isPlaying, currentTime]); 
+  }, [isPlaying, currentTime]);
 
   // Handle play/pause
   useEffect(() => {
@@ -445,7 +402,7 @@ const App: React.FC = () => {
       return unlisten
     }
 
-    
+
 
     const setupListener = async () => {
       const unlisten = await listen<string>('pedal-action', (event) => {
@@ -485,7 +442,7 @@ const App: React.FC = () => {
             const currentSubtitles = sortedSubtitlesRef.current;
 
             if (currentIndex !== null && currentIndex < currentSubtitles.length - 1) {
-              console.log(`Current IDX: ${currentIndex}, moving to ${currentIndex+1}, ${currentSubtitles[currentIndex].startTime}, ${currentSubtitles[currentIndex+1].startTime}`)
+              console.log(`Current IDX: ${currentIndex}, moving to ${currentIndex + 1}, ${currentSubtitles[currentIndex].startTime}, ${currentSubtitles[currentIndex + 1].startTime}`)
               jumpToTime(currentSubtitles[currentIndex + 1].startTime);
               // @ts-ignore
               setCurrentEditIndex((prev) => prev + 1);
@@ -634,9 +591,21 @@ const App: React.FC = () => {
               <div className="flex items-center justify-between flex-wrap gap-x-6 gap-y-3 p-4 border-b border-gray-200 bg-gray-50">
                 <div className="flex items-center gap-3 flex-shrink min-w-0">
                   {transcriptionFileName ? (
-                    <p className="text-sm text-gray-700 truncate" title={transcriptionFileName}>
-                      <strong className="font-medium">{transcriptionFileName}</strong>
-                    </p>
+                    <div className="flex items-center gap-3">
+                      <p className="text-sm text-gray-700 truncate" title={transcriptionFileName}>
+                        <strong className="font-medium">{transcriptionFileName}</strong>
+                      </p>
+                      {viewMode === 'paragraph' && (
+                        <button onClick={() => setViewMode('table')}>
+                          <FaTable className="h-4 w-4" />
+                        </button>
+                      )}
+                      {viewMode === 'table' && (
+                        <button onClick={() => setViewMode('paragraph')}>
+                          <FaParagraph className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <p className="text-sm text-gray-500 italic">No file loaded</p>
                   )}
@@ -679,56 +648,29 @@ const App: React.FC = () => {
 
             {subtitles.length > 0 ? (
               <div className="overflow-y-auto h-[32rem] flex-grow">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Text</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Checked</th>
-                    </tr>
-                  </thead>
-                  <tbody ref={tableBodyRef} className="bg-white divide-y divide-gray-200">
-                    {sortedSubtitles.map((subtitle, idx) => (
-                      <tr
-                        key={subtitle.startTime}
-                        className={`${currentTime >= subtitle.startTime && currentTime < subtitle.endTime ? 'bg-blue-50' : ''}`}
-                      >
-                        <td className="px-6 py-4 w-1/5 whitespace-nowrap text-sm text-gray-500">
-                          <div className="flex items-center space-x-2">
-                            <button onClick={() => { jumpToTime(subtitle.startTime); setIsPlaying(true) }} className="p-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors" title="Jump to time"><FaPlay className="w-3 h-3" /></button>
-                            <span className="font-mono">{formatTime(subtitle.startTime)}</span>
-                            <span className="text-gray-500">Confidence:</span>
-                            <span
-                              className={`${colorForConfidence(subtitle.confidence)} font-mono`}
-                            >{subtitle.confidence !== undefined ? `${(subtitle.confidence * 100).toFixed(0)}%` : 'N/A'}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 w-3/5 text-sm text-gray-500">
-                          <div className="flex items-center gap-2">
-                            <textarea
-                              value={subtitle.text}
-                              onChange={(e) => updateSubtitleText(subtitle.id, e.target.value)}
-                              // @ts-ignore
-                              style={{ fieldSizing: 'content' }}
-                              className="flex-grow border rounded px-3 py-2 min-h-[60px] text-sm font-mono bg-gray-20 focus:bg-white focus:ring-1 focus:ring-blue-500 focus:text-black text-grey-500 resize-none"
-                              placeholder="Enter subtitle text..."
-                            />
-                            <button
-                              onClick={() => copySegmentToClipboard(subtitle)}
-                              className="inline-flex items-center p-2 border border-transparent rounded-md shadow-sm text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors"
-                              title="Copy segment text"
-                            >
-                              <FaClipboard className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 w-1/5 text-sm text-gray-500 items-center justify-center">
-                          <input type="checkbox" checked={subtitle.checked} onChange={() => markSubtitleChecked(subtitle.id, !subtitle.checked)} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500" />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {viewMode === 'table' && (
+                  <SubtitleTable
+                    sortedSubtitles={sortedSubtitles}
+                    currentTime={currentTime}
+                    tableBodyRef={tableBodyRef}
+                    setIsPlaying={setIsPlaying}
+                    jumpToTime={jumpToTime}
+                    updateSubtitleText={updateSubtitleText}
+                    markSubtitleChecked={markSubtitleChecked}
+                    copySegmentToClipboard={copySegmentToClipboard}
+                  />
+                )}
+                {viewMode === 'paragraph' && (
+                  <SubtitleParagraph
+                    sortedSubtitles={sortedSubtitles}
+                    currentTime={currentTime}
+                    setIsPlaying={setIsPlaying}
+                    jumpToTime={jumpToTime}
+                    updateSubtitleText={updateSubtitleText}
+                    markSubtitleChecked={markSubtitleChecked}
+                    copySegmentToClipboard={copySegmentToClipboard}
+                  />
+                )}
               </div>
             ) : (
               <div className="text-center p-12 bg-gray-50 rounded-lg border-t border-gray-200">
