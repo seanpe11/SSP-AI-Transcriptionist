@@ -8,6 +8,7 @@ import SubtitleTable from './components/SubtitleTable'
 import SubtitleParagraph from './components/SubtitleParagraph'
 import { SubtitleEntry } from './types'
 import { useTranscription } from './hooks/useTranscription';
+import { useAudioPlayer } from './hooks/useAudioPlayer';
 
 const formatTime = (seconds: number): string => {
   const h = Math.floor(seconds / 3600);
@@ -22,11 +23,12 @@ const App: React.FC = () => {
   // let's keep visual state changes here
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [currentEditIndex, setCurrentEditIndex] = useState<number | null>(null);
-  const [duration, setDuration] = useState(0);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const [isPedalConnected, setIsPedalConnected] = useState<boolean>(false);
   const tableBodyRef = useRef<HTMLTableSectionElement>(null);
   const [viewMode, setViewMode] = useState<'table' | 'paragraph'>('paragraph');
+  const currentEditIndexRef = useRef<number | null>(null);
+  useEffect(() => { currentEditIndexRef.current = currentEditIndex }, [currentEditIndex]);
 
   const {
     isTranscribing,
@@ -38,18 +40,17 @@ const App: React.FC = () => {
     markSubtitleChecked,
   } = useTranscription({ setToastMessage });
 
-  // audio player state
-  const [audioSrc, setAudioSrc] = useState<string | null>(null);
-  const [audioFileName, setAudioFileName] = useState<string | null>(null);
-  const [_audioFile, setAudioFile] = useState<File | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [autoScroll, setAutoScroll] = useState(true);
-  const [_waveform, setWaveform] = useState<HTMLCanvasElement | null>(null);
-  const [currentTime, setCurrentTime] = useState(0);
-  const waveformRef = useRef<HTMLCanvasElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const animationRef = useRef<number | null>(null);
+  // Memoized sorted subtitles
+  const sortedSubtitles = useMemo(() => {
+    return [...subtitles].sort((a, b) => a.startTime - b.startTime);
+  }, [subtitles]);
 
+  const sortedSubtitlesRef = useRef<SubtitleEntry[]>([]);
+  useEffect(() => {
+    sortedSubtitlesRef.current = sortedSubtitles;
+  }, [sortedSubtitles]);
+
+  // Toast
   useEffect(() => {
     if (toastMessage) {
       const timer = setTimeout(() => {
@@ -59,22 +60,20 @@ const App: React.FC = () => {
     }
   }, [toastMessage]);
 
-
-  // Handle audio file drop (uses loadNewAudio)
-  const onAudioDrop = useCallback((acceptedFiles: File[]) => {
-    loadNewAudio(acceptedFiles[0]);
-  }, [audioSrc]);
-
-
-  const triggerAudioInputChange = () => {
-    audioInputRef.current?.click();
-  };
-
-  // Handle audio file change via input (uses loadNewAudio)
-  const handleAudioChange = (e: ChangeEvent<HTMLInputElement>) => {
-    loadNewAudio(e.target.files?.[0]);
-    if (e.target) e.target.value = '';
-  };
+  const {
+    audioSrc, setAudioSrc,
+    audioFileName, setAudioFileName,
+    _audioFile, setAudioFile,
+    isPlaying, setIsPlaying,
+    autoScroll, setAutoScroll,
+    duration, setDuration,
+    _waveform, setWaveform,
+    currentTime, setCurrentTime,
+    waveformRef,
+    audioRef,
+    jumpToTime,
+    animationRef,
+  } = useAudioPlayer({ setCurrentEditIndex, sortedSubtitles });
 
   const loadNewAudio = (file: File | null | undefined) => {
     if (!file) return;
@@ -98,7 +97,22 @@ const App: React.FC = () => {
     // Automatically start the transcription process
     startTranscriptionProcess(file);
   }
+  // Handle audio file drop (uses loadNewAudio)
+  const onAudioDrop = useCallback((acceptedFiles: File[]) => {
+    loadNewAudio(acceptedFiles[0]);
+  }, [audioSrc]);
 
+  const triggerAudioInputChange = () => {
+    audioInputRef.current?.click();
+  };
+
+  // Handle audio file change via input (uses loadNewAudio)
+  const handleAudioChange = (e: ChangeEvent<HTMLInputElement>) => {
+    loadNewAudio(e.target.files?.[0]);
+    if (e.target) e.target.value = '';
+  };
+
+  // audio dropzone
   const {
     getRootProps: getAudioRootProps,
     getInputProps: getAudioInputProps,
@@ -108,117 +122,18 @@ const App: React.FC = () => {
     multiple: false,
   });
 
-  // Draw waveform
-  useEffect(() => {
-    if (!audioSrc || !waveformRef.current) return;
 
-    const canvas = waveformRef.current;
-    setWaveform(canvas);
-    const audio = new Audio(audioSrc);
-    audio.addEventListener('loadedmetadata', () => {
-      setDuration(audio.duration);
-
-      const context = new AudioContext();
-      fetch(audioSrc)
-        .then(response => response.arrayBuffer())
-        .then(buffer => context.decodeAudioData(buffer))
-        .then(audioBuffer => {
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-          ctx.fillStyle = '#f3f4f6';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          const data = audioBuffer.getChannelData(0);
-          const step = Math.ceil(data.length / canvas.width);
-          const amp = canvas.height / 2;
-          ctx.fillStyle = '#60a5fa';
-          for (let i = 0; i < canvas.width; i++) {
-            let min = 1.0;
-            let max = -1.0;
-            for (let j = 0; j < step; j++) {
-              const datum = data[(i * step) + j];
-              if (datum < min) min = datum;
-              if (datum > max) max = datum;
-            }
-            ctx.fillRect(i, (1 + min) * amp, 1, Math.max(1, (max - min) * amp));
-          }
-        });
-    });
-  }, [audioSrc]);
-
-  // Memoized sorted subtitles
-  const sortedSubtitles = useMemo(() => {
-    return [...subtitles].sort((a, b) => a.startTime - b.startTime);
-  }, [subtitles]);
-
-  const sortedSubtitlesRef = useRef<SubtitleEntry[]>([]);
-  useEffect(() => {
-    sortedSubtitlesRef.current = sortedSubtitles;
-  }, [sortedSubtitles]);
-
-  // Update audio time display and waveform position
-  const updateTimeDisplay = useCallback(() => {
-    if (audioRef.current) {
-      const newCurrentTime = audioRef.current.currentTime;
-      setCurrentTime(newCurrentTime);
-
-      const currentSubtitle = sortedSubtitles.find(
-        sub => newCurrentTime >= sub.startTime && newCurrentTime <= sub.endTime
-      );
-
-      if (currentSubtitle) {
-        const subtitleIndex = sortedSubtitles.findIndex(s => s.startTime === currentSubtitle.startTime);
-        // Use a functional state update to avoid dependency on currentEditIndex
-        setCurrentEditIndex(prevIndex => {
-          if (prevIndex !== subtitleIndex) {
-            console.log("Setting new index:", subtitleIndex); // You should see this log now
-            return subtitleIndex;
-          }
-          return prevIndex;
-        });
-      } else {
-        setCurrentEditIndex(null);
-      }
-
-      if (isPlaying) {
-        animationRef.current = requestAnimationFrame(updateTimeDisplay);
-      }
-    }
-  }, [isPlaying, currentTime]);
-
-  // Handle play/pause
-  useEffect(() => {
-    if (isPlaying) {
-      audioRef.current?.play();
-      animationRef.current = requestAnimationFrame(updateTimeDisplay);
-    } else {
-      audioRef.current?.pause();
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
-    }
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
-    };
-  }, [isPlaying, updateTimeDisplay]);
-
-  // Jump to a specific time
-  const jumpToTime = (time: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = time;
-      setCurrentTime(time);
-      console.log(time)
-      const found = sortedSubtitles.findIndex(s => s.startTime <= time && s.endTime >= time)
-      setCurrentEditIndex(found);
-    }
+  // Set current time from waveform click
+  const handleWaveformClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!waveformRef.current || duration === 0) return;
+    const rect = waveformRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const clickTimeRatio = x / rect.width;
+    const newTime = clickTimeRatio * duration;
+    jumpToTime(newTime);
   };
 
   // PEDAL CONTROLS
-  const currentEditIndexRef = useRef<number | null>(null);
-  useEffect(() => { currentEditIndexRef.current = currentEditIndex }, [currentEditIndex]);
   // check pedal connection
   useEffect(() => {
     const checkInitialStatus = async () => {
@@ -241,8 +156,6 @@ const App: React.FC = () => {
       })
       return unlisten
     }
-
-
 
     const setupListener = async () => {
       const unlisten = await listen<string>('pedal-action', (event) => {
@@ -346,16 +259,6 @@ const App: React.FC = () => {
       }
     }
   }, [currentEditIndex, autoScroll]);
-
-  // Set current time from waveform click
-  const handleWaveformClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!waveformRef.current || duration === 0) return;
-    const rect = waveformRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const clickTimeRatio = x / rect.width;
-    const newTime = clickTimeRatio * duration;
-    jumpToTime(newTime);
-  };
 
   const Spinner: React.FC = () => (
     <div className="flex flex-col items-center justify-center gap-4">
