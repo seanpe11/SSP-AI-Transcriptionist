@@ -6,9 +6,8 @@ import { listen } from '@tauri-apps/api/event'
 import { invoke } from "@tauri-apps/api/core"
 import SubtitleTable from './components/SubtitleTable'
 import SubtitleParagraph from './components/SubtitleParagraph'
-import { SubtitleEntry, JsonTranscription, StatusApiResponse, TranscribeApiResponse } from './types'
-
-const API_BASE_URL = 'https://ssp-whisper-worker.sean-m-s-pe.workers.dev';
+import { SubtitleEntry } from './types'
+import { useTranscription } from './hooks/useTranscription';
 
 const formatTime = (seconds: number): string => {
   const h = Math.floor(seconds / 3600);
@@ -20,19 +19,24 @@ const formatTime = (seconds: number): string => {
 };
 
 const App: React.FC = () => {
-
   // let's keep visual state changes here
-  const [isTranscribing, setIsTranscribing] = useState(false);
-
-  const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
-  const [transcriptionFileName, setTranscriptionFileName] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [currentEditIndex, setCurrentEditIndex] = useState<number | null>(null);
   const [duration, setDuration] = useState(0);
   const audioInputRef = useRef<HTMLInputElement>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isPedalConnected, setIsPedalConnected] = useState<boolean>(false);
   const tableBodyRef = useRef<HTMLTableSectionElement>(null);
   const [viewMode, setViewMode] = useState<'table' | 'paragraph'>('paragraph');
+
+  const {
+    isTranscribing,
+    subtitles,
+    setSubtitles,
+    transcriptionFileName, setTranscriptionFileName,
+    startTranscriptionProcess,
+    updateSubtitleText,
+    markSubtitleChecked,
+  } = useTranscription({ setToastMessage });
 
   // audio player state
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
@@ -46,8 +50,6 @@ const App: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const animationRef = useRef<number | null>(null);
 
-
-  // toast message handler
   useEffect(() => {
     if (toastMessage) {
       const timer = setTimeout(() => {
@@ -58,141 +60,11 @@ const App: React.FC = () => {
   }, [toastMessage]);
 
 
-  // Parse JSON transcription file content
-  const parseJsonTranscriptionFromFile = (content: string): SubtitleEntry[] => {
-    try {
-      const result = JSON.parse(content);
-      const data: JsonTranscription = result.result;
-
-      if (!data.segments || !Array.isArray(data.segments)) {
-        console.error("Invalid JSON format: 'segments' array not found.");
-        return [];
-      }
-
-      return data.segments.map(seg => ({
-        id: seg.id,
-        startTime: seg.start,
-        endTime: seg.end,
-        text: seg.text.trim(),
-        confidence: seg.confidence,
-      }));
-    } catch (error) {
-      console.error("Failed to parse JSON file:", error);
-      setToastMessage("Invalid JSON file. Please check the file format and try again.");
-      return [];
-    }
-  };
-
-  const parseJsonTranscription = (result: JsonTranscription): SubtitleEntry[] => {
-    try {
-      return result.segments.map(seg => ({
-        id: seg.id,
-        startTime: seg.start,
-        endTime: seg.end,
-        text: seg.text.trim(),
-        confidence: seg.confidence,
-      }));
-    } catch (error) {
-      console.error("Failed to parse JSON response:", error);
-      return [];
-    }
-  };
-
-
-  // Handle transcription file drop
-  const onTranscriptionDrop = useCallback((acceptedFiles: File[]) => {
-    const file = acceptedFiles[0];
-    if (!file) return;
-    loadNewTranscription(file);
-  }, []);
-
-  // Load and process the new transcription file
-  const loadNewTranscription = (file: File | null | undefined) => {
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target?.result as string;
-      const parsed = parseJsonTranscriptionFromFile(content);
-      setTranscriptionFileName(file.name);
-      setSubtitles(parsed);
-    };
-    reader.readAsText(file);
-  };
-
-
   // Handle audio file drop (uses loadNewAudio)
   const onAudioDrop = useCallback((acceptedFiles: File[]) => {
     loadNewAudio(acceptedFiles[0]);
   }, [audioSrc]);
 
-  const startTranscriptionProcess = async (file: File) => {
-    setIsTranscribing(true);
-    const formData = new FormData();
-    formData.append('audio_file', file);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/transcribe`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data: TranscribeApiResponse = await response.json();
-
-      if (response.status === 202) { // Status 202 Accepted
-        console.log("Transcription job accepted:", data.message);
-        if (data.filename) {
-          pollForStatus(data.filename);
-        }
-      } else if (response.status === 409) { // Status 409 Conflict
-        console.log("Job already exists, fetching status for:", file.name);
-        setToastMessage("Transcription job already exists, fetching status...");
-        pollForStatus(file.name);
-      } else {
-        throw new Error(data.error || 'Failed to start transcription');
-      }
-    } catch (error: any) {
-      console.error("Transcription initiation failed:", error);
-      setToastMessage(`Error: ${error.message}`);
-      setIsTranscribing(false);
-    }
-  };
-
-  const pollForStatus = async (filename: string) => {
-    const intervalId = setInterval(async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/status/${filename}`);
-        if (!response.ok) {
-          if (response.status === 404) {
-            console.log("Job not found yet, still polling...");
-            return; // Continue polling
-          }
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data: StatusApiResponse = await response.json();
-
-        if (data.status === 'complete' && data.result) {
-          clearInterval(intervalId);
-          const parsed = parseJsonTranscription(data.result); // Use updated parser
-          setSubtitles(parsed);
-          setTranscriptionFileName(data.filename);
-          setIsTranscribing(false);
-          setToastMessage('Transcription complete!');
-        } else if (data.status === 'error') {
-          clearInterval(intervalId);
-          setIsTranscribing(false);
-          setToastMessage(`Transcription failed: ${data.result?.text || 'Unknown error'}`);
-        }
-        // If status is 'queued' or 'processing', do nothing and let the interval continue.
-      } catch (error) {
-        console.error("Polling error:", error);
-        clearInterval(intervalId);
-        setIsTranscribing(false);
-        setToastMessage('An error occurred while checking the transcription status.');
-      }
-    }, 3000); // Poll every 3 seconds
-  };
 
   const triggerAudioInputChange = () => {
     audioInputRef.current?.click();
@@ -226,16 +98,6 @@ const App: React.FC = () => {
     // Automatically start the transcription process
     startTranscriptionProcess(file);
   }
-
-  // Setup subtitle and audio dropzones
-  const {
-    getRootProps: getSubtitleRootProps,
-    getInputProps: getSubtitleInputProps,
-  } = useDropzone({
-    onDrop: onTranscriptionDrop,
-    accept: { 'application/json': ['.json'] }, // Accept JSON files
-    multiple: false,
-  });
 
   const {
     getRootProps: getAudioRootProps,
@@ -445,22 +307,6 @@ const App: React.FC = () => {
     };
   }, []); // Empty dependency array ensures this runs only once
 
-
-
-  // Update subtitle text
-  const updateSubtitleText = (id: number, text: string) => {
-    setSubtitles(
-      subtitles.map(sub => sub.id === id ? { ...sub, text, checked: true } : sub)
-    );
-  };
-
-  const markSubtitleChecked = (id: number, checked: boolean) => {
-    setSubtitles(
-      subtitles.map(sub => sub.id === id ? { ...sub, checked } : sub)
-    );
-  };
-
-
   const copyRaw = (subtitles: SubtitleEntry[]) => {
     return subtitles
       .map(sub => `${sub.text.trim()}`)
@@ -527,7 +373,9 @@ const App: React.FC = () => {
   return (
     <div className="max-h-screen min-h-screen bg-gray-100">
       {toastMessage && <Toast message={toastMessage} />}
+      {/* Main Container */}
       <div className="max-h-full max-w-7xl my-0 mx-auto bg-white rounded-lg">
+        {/* Header */}
         <div className="p-6 relative">
           <div className="mt-0 mb-2 border rounded-lg overflow-hidden">
             {(audioSrc && subtitles.length > 0) && (
@@ -539,13 +387,19 @@ const App: React.FC = () => {
                         <strong className="font-medium">{transcriptionFileName}</strong>
                       </p>
                       {viewMode === 'paragraph' && (
-                        <button onClick={() => setViewMode('table')}>
-                          <FaTable className="h-4 w-4" />
+                        <button
+                          className="px-2.5 py-1 bg-gray-200 text-gray-800 text-xs font-medium rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 transition-colors flex items-center flex-shrink-0"
+                          onClick={() => setViewMode('table')}>
+                          Switch to Table View
+                          <FaTable className="mx-2 h-4 w-4" />
                         </button>
                       )}
                       {viewMode === 'table' && (
-                        <button onClick={() => setViewMode('paragraph')}>
-                          <FaParagraph className="h-4 w-4" />
+                        <button
+                          className="px-2.5 py-1 bg-gray-200 text-gray-800 text-xs font-medium rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 transition-colors flex items-center flex-shrink-0"
+                          onClick={() => setViewMode('paragraph')}>
+                          Switch to Paragraph View
+                          <FaParagraph className="mx-2 h-4 w-4" />
                         </button>
                       )}
                     </div>
@@ -618,10 +472,8 @@ const App: React.FC = () => {
             ) : (
               <div className="text-center p-12 bg-gray-50 rounded-lg border-t border-gray-200">
                 <div
-                  {...getSubtitleRootProps()}
                   className="border-2 border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center transition-colors duration-150 cursor-pointer hover:bg-gray-50"
                 >
-                  <input {...getSubtitleInputProps()} disabled={!audioSrc} />
                   {isTranscribing ? (
                     <Spinner />
                   ) : (
