@@ -2,15 +2,12 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useDropzone } from 'react-dropzone';
 import { FaFileAudio, FaPlay, FaPause, FaRegFileAudio, FaClipboard, FaTable, FaParagraph, FaInfoCircle } from 'react-icons/fa';
 import { ChangeEvent } from 'react';
-import { listen, Event } from '@tauri-apps/api/event'
+import { listen } from '@tauri-apps/api/event'
 import { invoke } from "@tauri-apps/api/core"
-import { convertToMp3, splitChunks } from './fileUtils'
 import SubtitleTable from './components/SubtitleTable'
 import SubtitleParagraph from './components/SubtitleParagraph'
 import { SubtitleEntry, JsonTranscription, StatusApiResponse, TranscribeApiResponse } from './types'
 
-// const API_BASE_URL = 'http://localhost:8000';
-// const API_BASE_URL = 'https://transcription-api-gpu-384958301784.us-central1.run.app';
 const API_BASE_URL = 'https://ssp-whisper-worker.sean-m-s-pe.workers.dev';
 
 const formatTime = (seconds: number): string => {
@@ -23,31 +20,34 @@ const formatTime = (seconds: number): string => {
 };
 
 const App: React.FC = () => {
+
+  // let's keep visual state changes here
+  const [isTranscribing, setIsTranscribing] = useState(false);
+
   const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
   const [transcriptionFileName, setTranscriptionFileName] = useState<string | null>(null);
-  const [audioSrc, setAudioSrc] = useState<string | null>(null);
-  const [audioFileName, setAudioFileName] = useState<string | null>(null);
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [autoScroll, setAutoScroll] = useState(true);
-  const [currentTime, setCurrentTime] = useState(0);
   const [currentEditIndex, setCurrentEditIndex] = useState<number | null>(null);
-  const [waveform, setWaveform] = useState<HTMLCanvasElement | null>(null);
   const [duration, setDuration] = useState(0);
   const audioInputRef = useRef<HTMLInputElement>(null);
-  const transcriptionInputRef = useRef<HTMLInputElement>(null); // Renamed from srtInputRef
-  const previousActiveSubtitleIdRef = useRef<number | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isPedalConnected, setIsPedalConnected] = useState<boolean>(false);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const waveformRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number | null>(null);
   const tableBodyRef = useRef<HTMLTableSectionElement>(null);
   const [viewMode, setViewMode] = useState<'table' | 'paragraph'>('paragraph');
 
+  // audio player state
+  const [audioSrc, setAudioSrc] = useState<string | null>(null);
+  const [audioFileName, setAudioFileName] = useState<string | null>(null);
+  const [_audioFile, setAudioFile] = useState<File | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [_waveform, setWaveform] = useState<HTMLCanvasElement | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const waveformRef = useRef<HTMLCanvasElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const animationRef = useRef<number | null>(null);
 
 
+  // toast message handler
   useEffect(() => {
     if (toastMessage) {
       const timer = setTimeout(() => {
@@ -98,18 +98,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Generate SRT file content (for export)
-  const generateSRT = (): string => {
-    return subtitles
-      .sort((a, b) => a.startTime - b.startTime)
-      .map((entry, index) => {
-        const newId = index + 1;
-        const startTime = formatTime(entry.startTime);
-        const endTime = formatTime(entry.endTime);
-        return `${newId}\n${startTime} --> ${endTime}\n${entry.text}`;
-      })
-      .join('\n\n');
-  };
 
   // Handle transcription file drop
   const onTranscriptionDrop = useCallback((acceptedFiles: File[]) => {
@@ -117,16 +105,6 @@ const App: React.FC = () => {
     if (!file) return;
     loadNewTranscription(file);
   }, []);
-
-  // Trigger file input click
-  const triggerTranscriptionInputChange = () => {
-    transcriptionInputRef.current?.click();
-  };
-
-  // Handle transcription file change from input
-  const handleTranscriptionChange = (e: ChangeEvent<HTMLInputElement>) => {
-    loadNewTranscription(e.target.files?.[0]);
-  };
 
   // Load and process the new transcription file
   const loadNewTranscription = (file: File | null | undefined) => {
@@ -396,7 +374,7 @@ const App: React.FC = () => {
     (async () => { await checkInitialStatus() })();
 
     const listenForPedalDetection = async () => {
-      const unlisten = await listen<string>('pedal-found', (event) => {
+      const unlisten = await listen<string>('pedal-found', () => {
         setIsPedalConnected(true);
       })
       return unlisten
@@ -468,27 +446,6 @@ const App: React.FC = () => {
   }, []); // Empty dependency array ensures this runs only once
 
 
-  const colorForConfidence = (confidence: number | undefined) => {
-    if (confidence === undefined) return 'text-gray-500';
-    if (confidence < 0.5) return 'text-red-500';
-    if (confidence < 0.75) return 'text-yellow-500';
-    return 'text-green-500';
-  };
-
-  const uploadTranscriptionAudio = async () => {
-    const formData = new FormData();
-    console.log("Uploading audio file...");
-    if (!audioFile) return;
-    formData.append('audio_file', audioFile);
-
-    const response = await fetch('http://localhost:8000/transcribe/', {
-      method: 'POST',
-      body: formData,
-    });
-
-    const data = await response.json();
-    console.log(data);
-  };
 
   // Update subtitle text
   const updateSubtitleText = (id: number, text: string) => {
@@ -529,20 +486,6 @@ const App: React.FC = () => {
       console.error('Could not copy text: ', err);
       setToastMessage('Failed to copy SRT content.');
     });
-  };
-
-  // Function to download the SRT file
-  const downloadSRT = () => {
-    const content = generateSRT();
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = transcriptionFileName ? `${transcriptionFileName.split('.')[0]}.srt` : 'subtitles.srt';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   // Auto-scroll to the active subtitle
