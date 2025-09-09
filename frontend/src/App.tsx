@@ -9,6 +9,7 @@ import SubtitleParagraph from './components/SubtitleParagraph'
 import { SubtitleEntry } from './types'
 import { useTranscription } from './hooks/useTranscription';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
+import { usePedal } from './hooks/usePedal';
 
 const formatTime = (seconds: number): string => {
   const h = Math.floor(seconds / 3600);
@@ -28,6 +29,7 @@ const App: React.FC = () => {
   const tableBodyRef = useRef<HTMLTableSectionElement>(null);
   const [viewMode, setViewMode] = useState<'table' | 'paragraph'>('paragraph');
   const currentEditIndexRef = useRef<number | null>(null);
+
   useEffect(() => { currentEditIndexRef.current = currentEditIndex }, [currentEditIndex]);
 
   const {
@@ -63,17 +65,19 @@ const App: React.FC = () => {
   const {
     audioSrc, setAudioSrc,
     audioFileName, setAudioFileName,
-    _audioFile, setAudioFile,
+    setAudioFile,
     isPlaying, setIsPlaying,
     autoScroll, setAutoScroll,
-    duration, setDuration,
-    _waveform, setWaveform,
+    duration,
     currentTime, setCurrentTime,
     waveformRef,
     audioRef,
+    handleWaveformClick,
     jumpToTime,
-    animationRef,
   } = useAudioPlayer({ setCurrentEditIndex, sortedSubtitles });
+
+  usePedal({ setIsPlaying, audioRef, jumpToTime, currentEditIndexRef, sortedSubtitlesRef, setIsPedalConnected });
+
 
   const loadNewAudio = (file: File | null | undefined) => {
     if (!file) return;
@@ -93,7 +97,6 @@ const App: React.FC = () => {
     setAudioFile(file);
     setAudioFileName(file.name);
     setAudioSrc(url);
-
     // Automatically start the transcription process
     startTranscriptionProcess(file);
   }
@@ -123,102 +126,6 @@ const App: React.FC = () => {
   });
 
 
-  // Set current time from waveform click
-  const handleWaveformClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!waveformRef.current || duration === 0) return;
-    const rect = waveformRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const clickTimeRatio = x / rect.width;
-    const newTime = clickTimeRatio * duration;
-    jumpToTime(newTime);
-  };
-
-  // PEDAL CONTROLS
-  // check pedal connection
-  useEffect(() => {
-    const checkInitialStatus = async () => {
-      try {
-        const connected = await invoke<boolean>('is_pedal_connected');
-        if (connected) {
-          setIsPedalConnected(true);
-          console.log("Pedal was already connected on startup.");
-        }
-      } catch (e) {
-        console.error("Error checking initial pedal status:", e);
-      }
-    };
-
-    (async () => { await checkInitialStatus() })();
-
-    const listenForPedalDetection = async () => {
-      const unlisten = await listen<string>('pedal-found', () => {
-        setIsPedalConnected(true);
-      })
-      return unlisten
-    }
-
-    const setupListener = async () => {
-      const unlisten = await listen<string>('pedal-action', (event) => {
-        const shortcut = event.payload;
-        console.log(shortcut)
-        switch (shortcut) {
-          case 'left-pressed': {
-            const currentIndex = currentEditIndexRef.current;
-            const currentSubtitles = sortedSubtitlesRef.current;
-
-            if (currentIndex !== null && audioRef.current) {
-              // If we're at the start of a segment, jump to the previous one
-              if (audioRef.current.currentTime <= currentSubtitles[currentIndex].startTime + 0.1 && currentIndex > 0) {
-                jumpToTime(currentSubtitles[currentIndex - 1].startTime);
-              } else if (currentIndex <= 0) {
-                jumpToTime(0);
-              } else {
-                jumpToTime(currentSubtitles[currentIndex].startTime);
-              }
-            } else {
-              // If no active segment, jump to the beginning
-              jumpToTime(0);
-            }
-            break;
-          }
-
-          case 'center-pressed':
-            setIsPlaying(true);
-            break;
-
-          case 'center-released':
-            setIsPlaying(false);
-            break;
-
-          case 'right-pressed': {
-            const currentIndex = currentEditIndexRef.current;
-            const currentSubtitles = sortedSubtitlesRef.current;
-
-            if (currentIndex !== null && currentIndex < currentSubtitles.length - 1) {
-              console.log(`Current IDX: ${currentIndex}, moving to ${currentIndex + 1}, ${currentSubtitles[currentIndex].startTime}, ${currentSubtitles[currentIndex + 1].startTime}`)
-              jumpToTime(currentSubtitles[currentIndex + 1].startTime);
-              // @ts-ignore
-              setCurrentEditIndex((prev) => prev + 1);
-            }
-            break;
-          }
-
-          default:
-            break;
-        }
-      });
-      return unlisten;
-    };
-
-    const unlistenPromise = setupListener();
-    const unlistenPedalPromise = listenForPedalDetection();
-
-    // Cleanup the listener when the component unmounts
-    return () => {
-      unlistenPromise.then(unlisten => unlisten());
-      unlistenPedalPromise.then(unlisten => unlisten());
-    };
-  }, []); // Empty dependency array ensures this runs only once
 
   const copyRaw = (subtitles: SubtitleEntry[]) => {
     return subtitles

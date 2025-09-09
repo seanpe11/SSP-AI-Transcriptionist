@@ -122,6 +122,16 @@ export const useAudioPlayer = ({ setCurrentEditIndex, sortedSubtitles }: UseAudi
     }
   };
 
+  // Set current time from waveform click
+  const handleWaveformClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!waveformRef.current || duration === 0) return;
+    const rect = waveformRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const clickTimeRatio = x / rect.width;
+    const newTime = clickTimeRatio * duration;
+    jumpToTime(newTime);
+  };
+
 
 
   return {
@@ -133,9 +143,10 @@ export const useAudioPlayer = ({ setCurrentEditIndex, sortedSubtitles }: UseAudi
     duration, setDuration,
     _waveform, setWaveform,
     currentTime, setCurrentTime,
+    jumpToTime,
+    handleWaveformClick,
     waveformRef,
     audioRef,
-    jumpToTime,
     animationRef
   };
 };
