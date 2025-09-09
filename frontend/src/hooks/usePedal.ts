@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from '@tauri-apps/api/event'
 import { SubtitleEntry } from '../types'

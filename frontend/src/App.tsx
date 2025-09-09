@@ -2,8 +2,6 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useDropzone } from 'react-dropzone';
 import { FaFileAudio, FaPlay, FaPause, FaRegFileAudio, FaClipboard, FaTable, FaParagraph, FaInfoCircle } from 'react-icons/fa';
 import { ChangeEvent } from 'react';
-import { listen } from '@tauri-apps/api/event'
-import { invoke } from "@tauri-apps/api/core"
 import SubtitleTable from './components/SubtitleTable'
 import SubtitleParagraph from './components/SubtitleParagraph'
 import { SubtitleEntry } from './types'
